@@ -24,18 +24,12 @@ public class Main extends Activity {
         setContentView(R.layout.main);
         Handler h = new Handler();
 
-        ((Button)findViewById(R.id.zoom_out)).setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                --((Renderer)findViewById(R.id.the_canvas)).zoomLevel;
-            }
-        });
-        ((Button)findViewById(R.id.zoom_in)).setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                ++((Renderer)findViewById(R.id.the_canvas)).zoomLevel;
-            }
-        });
+//        ((Button)findViewById(R.id.zoom_out)).setOnClickListener(new OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                --((Renderer)findViewById(R.id.the_canvas)).zoomLevel;
+//            }
+//        });
 
         // We can't initialize the graphics immediately because the layout manager
         // needs to run first, thus call back in a sec.

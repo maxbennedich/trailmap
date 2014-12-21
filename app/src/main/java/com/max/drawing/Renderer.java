@@ -32,6 +32,7 @@ public class Renderer extends View {
     private static final double MIN_SCALE = 1 << MIN_ZOOM_LEVEL;
     private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 2;
     private double scaleFactor = 1 << zoomLevel;
+    private double scalingZoom = 1;
 
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
@@ -89,7 +90,7 @@ public class Renderer extends View {
 
     int pixelToUtm(int zoomLevel, int pixel) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
-        return pixel*(1<<(20-zoomLevel-8)); // 8 since tile is 256 pixels wide
+        return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
     XY utmToPixel(int zoomLevel, XY utmxy) {
@@ -98,7 +99,7 @@ public class Renderer extends View {
 
     int utmToPixel(int zoomLevel, int utm) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
-        return utm/(1<<(20-zoomLevel-8)); // 8 since tile is 256 pixels wide
+        return (int)(utm/(1<<(20-zoomLevel-8)) * scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
     XY utmToScreen(int zoomLevel, XY utmxy) {
@@ -150,19 +151,27 @@ public class Renderer extends View {
     }
 
     private void copyImage(Canvas canvas, Bitmap src, XY pos) {
-        int dx = pos.x, dy = pos.y;
-        int dw = getWidth(), dh = getHeight();
         int sw = src.getWidth(), sh = src.getHeight();
-
-        if (dx >= dw || dy >= dh || dx+sw <= 0 || dy+sh <= 0)
-            return; // out of bounds
-
-        int copyWidth = Math.min(sw, dw-dx) + Math.min(0, dx);
-        int copyHeight = Math.min(sh, dh-dy) + Math.min(0, dy);
-
-        Rect srcRect = new Rect(-Math.min(0, dx), -Math.min(0, dy), -Math.min(0, dx) + copyWidth, -Math.min(0, dy) + copyHeight);
-        Rect dstRect = new Rect(Math.max(0, dx), Math.max(0, dy), Math.max(0, dx) + copyWidth, Math.max(0, dy) + copyHeight);
+        int dw = (int)(sw * scalingZoom + 0.5);
+        int dh = (int)(sh * scalingZoom + 0.5);
+        Rect srcRect = new Rect(0, 0, sw, sh);
+        Rect dstRect = new Rect(pos.x, pos.y, pos.x+dw, pos.y+dh);
         canvas.drawBitmap(src, srcRect, dstRect, null);
+//        int dx = pos.x, dy = pos.y;
+//        int imgW = getWidth(), imgH = getHeight();
+//        int sw = src.getWidth(), sh = src.getHeight();
+//        int dw = (int)(dw * scalingZoom + 0.5);
+//        int dh = (int)(dh * scalingZoom + 0.5);
+//
+//        if (dx >= imgW || dy >= imgH || dx+sw <= 0 || dy+sh <= 0)
+//            return; // out of bounds
+//
+//        int copyWidth = Math.min(sw, imgW-dx) + Math.min(0, dx);
+//        int copyHeight = Math.min(sh, imgH-dy) + Math.min(0, dy);
+//
+//        Rect srcRect = new Rect(-Math.min(0, dx), -Math.min(0, dy), -Math.min(0, dx) + copyWidth, -Math.min(0, dy) + copyHeight);
+//        Rect dstRect = new Rect(Math.max(0, dx), Math.max(0, dy), Math.max(0, dx) + dstCopyWidth, Math.max(0, dy) + dstCopyHeight);
+//        canvas.drawBitmap(src, srcRect, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -217,8 +226,9 @@ public class Renderer extends View {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
             scaleFactor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scaleFactor * detector.getScaleFactor()));
-            zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+0.5));
+            zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
             zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
+            scalingZoom = scaleFactor / (1 << zoomLevel);
 //                float zoomTranslationX = (1 - scaleDifference) * detector.getFocusX() / scaleFactor;
 //                float zoomTranslationY = (1 - scaleDifference) * detector.getFocusY() / scaleFactor;
             return true;
