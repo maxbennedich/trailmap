@@ -75,7 +75,7 @@ public class Renderer extends View {
         // XXX perf below, consider a local hash instead
         int id = getResources().getIdentifier(resName, "drawable", getContext().getPackageName());
         if (id != 0) {
-            System.out.println("Loading resource " + resName);
+            Log.d("AccuMap", "Loading resource " + resName);
             Bitmap map = BitmapFactory.decodeResource(getResources(), id, NO_SCALING);
             // resource is null if not found (should not happen since id is not 0)
             if (map != null)
@@ -144,7 +144,7 @@ public class Renderer extends View {
             }
         }
 
-        Log.d("Perf", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
+        Log.d("AccuMap", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
 
 //        drawPath(zoomLevel);
 //        drawPointsOfInterest(zoomLevel);
@@ -178,7 +178,7 @@ public class Renderer extends View {
 
         emptyTile = BitmapFactory.decodeResource(getResources(), R.drawable.empty, NO_SCALING);
 
-        Log.d("Tile", "Initialized tiles -- size "+emptyTile.getWidth()+","+emptyTile.getHeight());
+        Log.d("AccuMap", "Initialized tiles -- size "+emptyTile.getWidth()+","+emptyTile.getHeight());
     }
 
     @Override
