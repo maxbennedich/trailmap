@@ -46,7 +46,7 @@ public class Renderer extends View {
             /**
              * Override get to load tiles not in the cache and insert them into the cache.
              *
-             * @returns Null if image could not be loaded (typically out of bounds).
+             * @return Null if image could not be loaded (typically out of bounds).
              */
             @Override public Tile get(Object key) {
                 Tile tile = super.get(key);
@@ -71,7 +71,7 @@ public class Renderer extends View {
     }
 
     private Tile loadTile(int zoomLevel, TilePos tp) {
-        String resName = "tile_" + this.zoomLevel + "_" + tp.tx + "_" + tp.ty;
+        String resName = "tile_" + tp.zoomLevel + "_" + tp.tx + "_" + tp.ty;
         // XXX perf below, consider a local hash instead
         int id = getResources().getIdentifier(resName, "drawable", getContext().getPackageName());
         if (id != 0) {
@@ -84,28 +84,35 @@ public class Renderer extends View {
         return null;
     }
 
-    XY pixelToUtm(int zoomLevel, XY pixel) {
-        return new XY(pixelToUtm(zoomLevel, pixel.x), pixelToUtm(zoomLevel, pixel.y));
+    XY pixelToUtm(XY pixel) {
+        return new XY(pixelToUtm(pixel.x), pixelToUtm(pixel.y));
     }
 
-    int pixelToUtm(int zoomLevel, int pixel) {
+    int pixelToUtm(int pixel) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
-    XY utmToPixel(int zoomLevel, XY utmxy) {
-        return new XY(utmToPixel(zoomLevel, utmxy.x), utmToPixel(zoomLevel, utmxy.y));
+    XY utmToPixel(XY utmxy) {
+        return new XY(utmToPixel(utmxy.x), utmToPixel(utmxy.y));
     }
 
-    int utmToPixel(int zoomLevel, int utm) {
+    int utmToPixel(int utm) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return (int)(utm/(1<<(20-zoomLevel-8)) * scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
-    XY utmToScreen(int zoomLevel, XY utmxy) {
+    XY utmToScreen(XY utmxy) {
         XY mid = getScreenSize().div(2).sub(1, 1); // y off by one?
-        XY utp = utmToPixel(zoomLevel, utmxy.sub(centerUtm));
+        XY utp = utmToPixel(utmxy.sub(centerUtm));
         return new XY(mid.x + utp.x, mid.y - utp.y);
+    }
+
+    XY screenToUtm(XY pixel) {
+        XY mid = getScreenSize().div(2).sub(1, 1); // y off by one?
+        XY dif = new XY(mid.x - pixel.x, pixel.y - mid.y);
+        XY utp = pixelToUtm(dif);
+        return centerUtm.add(utp);
     }
 
     long time;
@@ -114,13 +121,11 @@ public class Renderer extends View {
 
     @Override
     synchronized public void onDraw(Canvas canvas) {
-        int zoomLevel = this.zoomLevel;
-
         time = System.nanoTime();
 
         // calculate utm coordinates for screen corners
-        XY utm0 = centerUtm.sub(pixelToUtm(zoomLevel, getScreenSize().div(2).sub(1, 1)));
-        XY utm1 = centerUtm.add(pixelToUtm(zoomLevel, getScreenSize().div(2)));
+        XY utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
+        XY utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
 
         TileRectangle tr = new TileRectangle(utm0.x, utm0.y, utm1.x, utm1.y, zoomLevel);
 
@@ -130,7 +135,7 @@ public class Renderer extends View {
                 int utx0 = tx * tr.tileSize - 1_200_000;
                 int uty0 = 8_500_000 - ty * tr.tileSize;
 
-                XY screenXY = utmToScreen(zoomLevel, new XY(utx0, uty0));
+                XY screenXY = utmToScreen(new XY(utx0, uty0));
 
 //                System.out.printf("Copy tile %d,%d to utm %d,%d, pixel %d,%d\n", tx, ty, utx0, uty0, screenX, screenY);
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
@@ -157,21 +162,6 @@ public class Renderer extends View {
         Rect srcRect = new Rect(0, 0, sw, sh);
         Rect dstRect = new Rect(pos.x, pos.y, pos.x+dw, pos.y+dh);
         canvas.drawBitmap(src, srcRect, dstRect, null);
-//        int dx = pos.x, dy = pos.y;
-//        int imgW = getWidth(), imgH = getHeight();
-//        int sw = src.getWidth(), sh = src.getHeight();
-//        int dw = (int)(dw * scalingZoom + 0.5);
-//        int dh = (int)(dh * scalingZoom + 0.5);
-//
-//        if (dx >= imgW || dy >= imgH || dx+sw <= 0 || dy+sh <= 0)
-//            return; // out of bounds
-//
-//        int copyWidth = Math.min(sw, imgW-dx) + Math.min(0, dx);
-//        int copyHeight = Math.min(sh, imgH-dy) + Math.min(0, dy);
-//
-//        Rect srcRect = new Rect(-Math.min(0, dx), -Math.min(0, dy), -Math.min(0, dx) + copyWidth, -Math.min(0, dy) + copyHeight);
-//        Rect dstRect = new Rect(Math.max(0, dx), Math.max(0, dy), Math.max(0, dx) + dstCopyWidth, Math.max(0, dy) + dstCopyHeight);
-//        canvas.drawBitmap(src, srcRect, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -203,8 +193,8 @@ public class Renderer extends View {
                 if (actionMode == ActionMode.PAN) {
                     int dx = (int)(event.getX() - panStartX + 0.5);
                     int dy = (int)(event.getY() - panStartY + 0.5);
-                    centerUtm = new XY(centerUtm.x - pixelToUtm(zoomLevel, dx),
-                            centerUtm.y + pixelToUtm(zoomLevel, dy));
+                    centerUtm = new XY(centerUtm.x - pixelToUtm(dx),
+                            centerUtm.y + pixelToUtm(dy));
                     panStartX = event.getX();
                     panStartY = event.getY();
                 }
@@ -225,12 +215,16 @@ public class Renderer extends View {
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
+            double oldScaleFactor = scaleFactor;
             scaleFactor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scaleFactor * detector.getScaleFactor()));
             zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
             zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
             scalingZoom = scaleFactor / (1 << zoomLevel);
-//                float zoomTranslationX = (1 - scaleDifference) * detector.getFocusX() / scaleFactor;
-//                float zoomTranslationY = (1 - scaleDifference) * detector.getFocusY() / scaleFactor;
+
+            double actualScale = scaleFactor / oldScaleFactor;
+            XY p = screenToUtm(new XY((int)(detector.getFocusX()+0.5), (int)(detector.getFocusY()+0.5)));
+            centerUtm = p.sub(p.sub(centerUtm).mul(actualScale));
+
             return true;
         }
     }

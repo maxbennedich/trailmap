@@ -6,6 +6,7 @@ public class XY {
     public XY(int x, int y) { this.x = x; this.y = y; }
 
     public XY div(int n) { return new XY(x/n, y/n); }
+    public XY mul(double d) { return new XY((int)(x*d+0.5), (int)(y*d+0.5)); }
     public XY add(int xa, int ya) { return new XY(x+xa, y+ya); }
     public XY add(XY xy) { return add(xy.x, xy.y); }
     public XY sub(int xa, int ya) { return new XY(x-xa, y-ya); }
