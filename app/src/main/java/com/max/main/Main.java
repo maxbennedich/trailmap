@@ -2,6 +2,7 @@ package com.max.main;
 
 import com.max.drawing.Renderer;
 import com.max.latlng.LatLng;
+import com.max.latlng.LatLngHelper;
 import com.max.latlng.UTMRef;
 import com.max.logic.XY;
 
@@ -24,35 +25,11 @@ import android.app.Activity;
 import android.graphics.Point;
 
 public class Main extends Activity {
-    private Handler frame = new Handler();
-
-    //Divide the frame by 1000 to calculate how many times per second the screen will update.
-    private static final int FRAME_RATE = 20; // 10 frames per second
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
-
         initLocationService();
-
-//        ((Button)findViewById(R.id.zoom_out)).setOnClickListener(new OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                --((Renderer)findViewById(R.id.the_canvas)).zoomLevel;
-//            }
-//        });
-
-        Handler h = new Handler();
-
-        // We can't initialize the graphics immediately because the layout manager
-        // needs to run first, thus call back in a sec.
-        h.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                initGfx();
-            }
-        }, 1000);
     }
 
     private void initLocationService() {
@@ -71,29 +48,13 @@ public class Main extends Activity {
         Log.d("AccuMap", "Location service initialized");
     }
 
-    synchronized private void locationUpdated(Location location) {
+    private void locationUpdated(Location location) {
         // TODO use nanos, not getTime
         Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
                 location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-        UTMRef utm = latLng.toUTMRef(33);
-        XY xy = new XY((int)(utm.getEasting()+0.5), (int)(utm.getNorthing()+0.5));
-        ((Renderer) findViewById(R.id.the_canvas)).setCenter(xy);
+        XY xy = LatLngHelper.getXYFromLatLng(location.getLatitude(), location.getLongitude());
+        Renderer renderer = ((Renderer)findViewById(R.id.the_canvas));
+        renderer.setCenter(xy);
+        renderer.invalidate();
     }
-
-    synchronized public void initGfx() {
-        frame.removeCallbacks(frameUpdate);
-        frame.postDelayed(frameUpdate, FRAME_RATE);
-    }
-
-    private Runnable frameUpdate = new Runnable() {
-        @Override
-        synchronized public void run() {
-            frame.removeCallbacks(frameUpdate);
-            //make any updates to on screen objects here
-            //then invoke the on draw by invalidating the canvas
-            ((Renderer)findViewById(R.id.the_canvas)).invalidate();
-            frame.postDelayed(frameUpdate, FRAME_RATE);
-        }
-    };
 }

@@ -197,10 +197,10 @@ public class Renderer extends View {
                 if (actionMode == ActionMode.PAN) {
                     int dx = (int)(event.getX() - panStartX + 0.5);
                     int dy = (int)(event.getY() - panStartY + 0.5);
-                    centerUtm = new XY(centerUtm.x - pixelToUtm(dx),
-                            centerUtm.y + pixelToUtm(dy));
+                    centerUtm = new XY(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
                     panStartX = event.getX();
                     panStartY = event.getY();
+                    invalidate();
                 }
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
@@ -212,11 +212,22 @@ public class Renderer extends View {
                 break;
         }
 
-        zoomDetector.onTouchEvent(event);
+        if (actionMode == ActionMode.ZOOM)
+            zoomDetector.onTouchEvent(event);
+
         return true;
     }
 
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
+        double prevFocusX, prevFocusY;
+
+        @Override
+        public boolean onScaleBegin(ScaleGestureDetector detector) {
+            prevFocusX = detector.getFocusX();
+            prevFocusY = detector.getFocusY();
+            return true;
+        }
+
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
             double oldScaleFactor = scaleFactor;
@@ -225,9 +236,26 @@ public class Renderer extends View {
             zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
             scalingZoom = scaleFactor / (1 << zoomLevel);
 
+            // TODO optimize the below
+
+            // translate due to focus point moving
+            double focusDiffX = detector.getFocusX() - prevFocusX;
+            double focusDiffY = detector.getFocusY() - prevFocusY;
+            if (focusDiffX != 0 || focusDiffY != 0) {
+                int dx = (int) (focusDiffX + 0.5);
+                int dy = (int) (focusDiffY + 0.5);
+                centerUtm = new XY(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
+            }
+
+            // now zoom
             double actualScale = scaleFactor / oldScaleFactor;
             XY p = screenToUtm(new XY((int)(detector.getFocusX()+0.5), (int)(detector.getFocusY()+0.5)));
             centerUtm = p.sub(p.sub(centerUtm).mul(actualScale));
+
+            prevFocusX = detector.getFocusX();
+            prevFocusY = detector.getFocusY();
+
+            invalidate();
 
             return true;
         }
