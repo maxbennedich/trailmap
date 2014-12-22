@@ -115,6 +115,10 @@ public class Renderer extends View {
         return centerUtm.add(utp);
     }
 
+    public void setCenter(XY utm) {
+        centerUtm = utm;
+    }
+
     long time;
 
     public XY getScreenSize() { return new XY(getWidth(), getHeight()); }
@@ -144,7 +148,7 @@ public class Renderer extends View {
             }
         }
 
-        Log.d("AccuMap", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
+//        Log.d("AccuMap", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
 
 //        drawPath(zoomLevel);
 //        drawPointsOfInterest(zoomLevel);

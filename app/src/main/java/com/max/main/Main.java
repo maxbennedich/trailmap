@@ -1,9 +1,14 @@
 package com.max.main;
 
 import com.max.drawing.Renderer;
+import com.max.latlng.LatLng;
+import com.max.latlng.UTMRef;
+import com.max.logic.XY;
+
 import java.util.Random;
 
 import android.content.Context;
+import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -51,7 +56,6 @@ public class Main extends Activity {
     }
 
     private void initLocationService() {
-        Log.d("AccuMap", "Initializing location service");
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         LocationListener locationListener = new LocationListener() {
@@ -63,7 +67,6 @@ public class Main extends Activity {
             public void onProviderDisabled(String provider) { }
         };
 
-        locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, locationListener);
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
         Log.d("AccuMap", "Location service initialized");
     }
@@ -72,10 +75,13 @@ public class Main extends Activity {
         // TODO use nanos, not getTime
         Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
                 location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
+        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        UTMRef utm = latLng.toUTMRef(33);
+        XY xy = new XY((int)(utm.getEasting()+0.5), (int)(utm.getNorthing()+0.5));
+        ((Renderer) findViewById(R.id.the_canvas)).setCenter(xy);
     }
 
     synchronized public void initGfx() {
-//        ((Button)findViewById(R.id.the_button)).setEnabled(true);
         frame.removeCallbacks(frameUpdate);
         frame.postDelayed(frameUpdate, FRAME_RATE);
     }

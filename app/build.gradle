@@ -5,7 +5,7 @@ android {
     buildToolsVersion "21.1.1"
 
     defaultConfig {
-        applicationId "com.max.test2"
+        applicationId "com.max.accumap"
         minSdkVersion 19
         targetSdkVersion 21
         versionCode 1
