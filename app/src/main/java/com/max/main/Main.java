@@ -1,34 +1,39 @@
 package com.max.main;
 
 import com.max.drawing.Renderer;
-import com.max.latlng.LatLng;
+import com.max.kml.CSVRouteLoader;
+import com.max.kml.InvalidKMLException;
+import com.max.kml.KMLRouteLoader;
 import com.max.latlng.LatLngHelper;
-import com.max.latlng.UTMRef;
-import com.max.logic.XY;
-
-import java.util.Random;
+import com.max.logic.XYd;
+import com.max.route.Route;
 
 import android.content.Context;
-import android.location.Criteria;
+import android.content.res.XmlResourceParser;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Log;
-import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
-import android.view.View;
-import android.view.View.OnClickListener;
-import android.widget.Button;
 import android.app.Activity;
-import android.graphics.Point;
+
+import java.io.InputStream;
 
 public class Main extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
+
+        Route route = null;
+        try {
+            InputStream is = getResources().openRawResource(R.raw.gotland_612878m);
+            route = new CSVRouteLoader().loadRoute(is);
+        } catch (InvalidKMLException e) {
+            throw new IllegalStateException("Failed to load route file", e);
+        }
+        ((Renderer)findViewById(R.id.the_canvas)).route = route;
+
         initLocationService();
     }
 
@@ -52,9 +57,9 @@ public class Main extends Activity {
         // TODO use nanos, not getTime
         Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
                 location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
-        XY xy = LatLngHelper.getXYFromLatLng(location.getLatitude(), location.getLongitude());
+        XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
         Renderer renderer = ((Renderer)findViewById(R.id.the_canvas));
-        renderer.setCenter(xy);
+        renderer.setGPSCoordinate(xy);
         renderer.invalidate();
     }
 }

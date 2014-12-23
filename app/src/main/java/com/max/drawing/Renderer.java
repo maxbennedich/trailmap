@@ -4,6 +4,8 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -11,15 +13,24 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 
+import com.max.logic.Rectangle;
 import com.max.logic.Tile;
 import com.max.logic.TilePos;
 import com.max.logic.TileRectangle;
 import com.max.logic.XY;
+import com.max.logic.XYd;
 import com.max.main.R;
+import com.max.route.RoadSurface;
+import com.max.route.Route;
+import com.max.route.RouteSegment;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Set;
 
 public class Renderer extends View {
+
+    public Route route;
 
     private Bitmap emptyTile;
 
@@ -30,14 +41,17 @@ public class Renderer extends View {
     public int zoomLevel = 5;
 
     private static final double MIN_SCALE = 1 << MIN_ZOOM_LEVEL;
-    private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 2;
+    private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 3;
     private double scaleFactor = 1 << zoomLevel;
     private double scalingZoom = 1;
 
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
 
-    private XY centerUtm = new XY(669_715, 6_583_611);
+    private XYd centerUtm = new XYd(669_715, 6_583_611);
+    private XYd gpsCoordinate = new XYd(centerUtm.x+100, centerUtm.y);
+
+    private static final XY ROUTE_PIXEL_OFFSET = new XY(-1, -1);
 
     private LinkedHashMap<TilePos, Tile> getTileCache() {
         return new LinkedHashMap<TilePos, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
@@ -84,54 +98,55 @@ public class Renderer extends View {
         return null;
     }
 
-    XY pixelToUtm(XY pixel) {
-        return new XY(pixelToUtm(pixel.x), pixelToUtm(pixel.y));
+    XYd pixelToUtm(XYd pixel) {
+        return new XYd(pixelToUtm(pixel.x), pixelToUtm(pixel.y));
     }
 
-    int pixelToUtm(int pixel) {
+    int pixelToUtm(double pixel) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
-    XY utmToPixel(XY utmxy) {
-        return new XY(utmToPixel(utmxy.x), utmToPixel(utmxy.y));
+    XYd utmToPixel(XYd utmxy) {
+        return new XYd(utmToPixel(utmxy.x), utmToPixel(utmxy.y));
     }
 
-    int utmToPixel(int utm) {
+    double utmToPixel(double utm) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
-        return (int)(utm/(1<<(20-zoomLevel-8)) * scalingZoom + 0.5); // 8 since tile is 256 pixels wide
+        return utm/(1<<(20-zoomLevel-8)) * scalingZoom; // 8 since tile is 256 pixels wide
     }
 
-    XY utmToScreen(XY utmxy) {
-        XY mid = getScreenSize().div(2).sub(1, 1); // y off by one?
-        XY utp = utmToPixel(utmxy.sub(centerUtm));
-        return new XY(mid.x + utp.x, mid.y - utp.y);
+    XYd utmToScreen(XYd utmxy) {
+        XYd mid = getScreenSize().div(2).sub(1, 1); // y off by one?
+        XYd utp = utmToPixel(utmxy.sub(centerUtm));
+        return new XYd(mid.x + utp.x, mid.y - utp.y);
     }
 
-    XY screenToUtm(XY pixel) {
-        XY mid = getScreenSize().div(2).sub(1, 1); // y off by one?
-        XY dif = new XY(mid.x - pixel.x, pixel.y - mid.y);
-        XY utp = pixelToUtm(dif);
+    XYd screenToUtm(XYd pixel) {
+        XYd mid = getScreenSize().div(2).sub(1, 1); // y off by one?
+        XYd dif = new XYd(mid.x - pixel.x, pixel.y - mid.y);
+        XYd utp = pixelToUtm(dif);
         return centerUtm.add(utp);
     }
 
-    public void setCenter(XY utm) {
-        centerUtm = utm;
+    public void setGPSCoordinate(XYd utm) {
+        gpsCoordinate = utm;
     }
 
     long time;
 
-    public XY getScreenSize() { return new XY(getWidth(), getHeight()); }
+    public XYd getScreenSize() { return new XYd(getWidth(), getHeight()); }
 
     @Override
     synchronized public void onDraw(Canvas canvas) {
         time = System.nanoTime();
 
         // calculate utm coordinates for screen corners
-        XY utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
-        XY utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
+        XYd utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
+        XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
 
-        TileRectangle tr = new TileRectangle(utm0.x, utm0.y, utm1.x, utm1.y, zoomLevel);
+        TileRectangle tr = new TileRectangle((int)Math.floor(utm0.x), (int)Math.floor(utm0.y),
+                (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), zoomLevel);
 
         for (int ty = tr.ty0; ty <= tr.ty1; ++ty) {
             for (int tx = tr.tx0; tx <= tr.tx1; ++tx) {
@@ -139,32 +154,84 @@ public class Renderer extends View {
                 int utx0 = tx * tr.tileSize - 1_200_000;
                 int uty0 = 8_500_000 - ty * tr.tileSize;
 
-                XY screenXY = utmToScreen(new XY(utx0, uty0));
+                XYd screenXY = utmToScreen(new XYd(utx0, uty0));
 
-//                System.out.printf("Copy tile %d,%d to utm %d,%d, pixel %d,%d\n", tx, ty, utx0, uty0, screenX, screenY);
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
-                Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                copyImage(canvas, tileImg, screenXY);
+                if (tile != null) {
+                    Bitmap tileImg = tile == null ? emptyTile : tile.map;
+                    copyImage(canvas, tileImg, screenXY);
+                }
             }
         }
 
 //        Log.d("AccuMap", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
 
-//        drawPath(zoomLevel);
+        drawPath(canvas);
 //        drawPointsOfInterest(zoomLevel);
 //        System.out.printf("Draw POIs: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 //        drawCrosshair();
+
+        drawGPSMarker(canvas);
 
 //        imagePanel.repaint();
 //        System.out.printf("Repaint: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
     }
 
-    private void copyImage(Canvas canvas, Bitmap src, XY pos) {
+    private void drawPath(Canvas canvas) {
+        Set<XY> pavedPixels = new HashSet<>();
+        Set<XY> dirtPixels = new HashSet<>();
+        for (RouteSegment segment : route.segments) {
+            // see if segment could possibly be on screen by looking at the bounding box
+            // this will get rid of the majority of segments (as long as they are not too large)
+            XYd min = utmToScreen(segment.boundingBox.min);
+            XYd max = utmToScreen(segment.boundingBox.max);
+            if ((min.x < 0 && max.x < 0) || (min.y < 0 && max.y < 0) ||
+                    (min.x >= getWidth() && max.x >= getWidth()) ||
+                    (min.y >= getHeight() && max.y >= getHeight())) {
+                continue;
+            }
+
+            for (XY xy : segment.points) {
+                XYd xyd = new XYd(xy.x, xy.y);
+                XYd pdbl = utmToScreen(xyd);
+                XY p = new XY((int)(pdbl.x+0.5), (int)(pdbl.y+0.5));
+                if (!(p.x >= 0 && p.y >= 0 && p.x < getWidth() && p.y < getHeight()))
+                    continue; // note: might skip pixels near border: should add w/2...
+
+                (segment.roadSurface == RoadSurface.DIRT ? dirtPixels : pavedPixels).add(p);
+            }
+        }
+
+//        System.out.printf("Calculate path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
+
+        pavedPixels.removeAll(dirtPixels);
+
+        Paint paint = new Paint();
+        paint.setStrokeWidth(5);
+
+        paint.setColor(0x6fff0000);
+        for (XY p : pavedPixels)
+            canvas.drawPoint(p.x, p.y, paint);
+
+        paint.setColor(0x6fff5f00);
+        for (XY p : dirtPixels)
+            canvas.drawPoint(p.x, p.y, paint);
+
+//        System.out.printf("Draw path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
+    }
+
+    private void drawGPSMarker(Canvas canvas) {
+        XYd screenXY = utmToScreen(gpsCoordinate);
+        Bitmap gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
+        canvas.drawBitmap(gpsIcon, (int)(screenXY.x-gpsIcon.getWidth()/2+0.5), (int)(screenXY.y-gpsIcon.getHeight()/2+0.5), null);
+    }
+
+    private void copyImage(Canvas canvas, Bitmap src, XYd pos) {
         int sw = src.getWidth(), sh = src.getHeight();
-        int dw = (int)(sw * scalingZoom + 0.5);
-        int dh = (int)(sh * scalingZoom + 0.5);
+        double dw = sw * scalingZoom;
+        double dh = sh * scalingZoom;
         Rect srcRect = new Rect(0, 0, sw, sh);
-        Rect dstRect = new Rect(pos.x, pos.y, pos.x+dw, pos.y+dh);
+        Rect dstRect = new Rect((int)(pos.x+0.5), (int)(pos.y+0.5), (int)(pos.x+dw+0.5), (int)(pos.y+dh+0.5));
         canvas.drawBitmap(src, srcRect, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -173,7 +240,7 @@ public class Renderer extends View {
 
     private ScaleGestureDetector zoomDetector;
     private ActionMode actionMode = ActionMode.NONE;
-    private float panStartX, panStartY;
+    private double panStartX, panStartY;
 
     public Renderer(Context context, AttributeSet aSet) {
         super(context, aSet);
@@ -195,9 +262,9 @@ public class Renderer extends View {
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (actionMode == ActionMode.PAN) {
-                    int dx = (int)(event.getX() - panStartX + 0.5);
-                    int dy = (int)(event.getY() - panStartY + 0.5);
-                    centerUtm = new XY(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
+                    double dx = event.getX() - panStartX;
+                    double dy = event.getY() - panStartY;
+                    centerUtm = new XYd(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
                     panStartX = event.getX();
                     panStartY = event.getY();
                     invalidate();
@@ -242,14 +309,12 @@ public class Renderer extends View {
             double focusDiffX = detector.getFocusX() - prevFocusX;
             double focusDiffY = detector.getFocusY() - prevFocusY;
             if (focusDiffX != 0 || focusDiffY != 0) {
-                int dx = (int) (focusDiffX + 0.5);
-                int dy = (int) (focusDiffY + 0.5);
-                centerUtm = new XY(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
+                centerUtm = new XYd(centerUtm.x - pixelToUtm(focusDiffX), centerUtm.y + pixelToUtm(focusDiffY));
             }
 
             // now zoom
             double actualScale = scaleFactor / oldScaleFactor;
-            XY p = screenToUtm(new XY((int)(detector.getFocusX()+0.5), (int)(detector.getFocusY()+0.5)));
+            XYd p = screenToUtm(new XYd(detector.getFocusX(), detector.getFocusY()));
             centerUtm = p.sub(p.sub(centerUtm).mul(actualScale));
 
             prevFocusX = detector.getFocusX();
