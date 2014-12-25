@@ -71,7 +71,7 @@ public class KMLRouteLoader {
                 segments.add(new RouteSegment(name, roadSurface, segment));
             } else {
                 System.out.println(poi);
-                pois.add(new PointOfInterest(name, poi));
+                pois.add(new PointOfInterest(name, poi.x, poi.y));
             }
         }
 

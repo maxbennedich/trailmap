@@ -3,6 +3,7 @@ package com.max.main;
 import com.max.drawing.Renderer;
 import com.max.latlng.LatLngHelper;
 import com.max.logic.XYd;
+import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 
@@ -24,29 +25,43 @@ public class Main extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-//        Route route = null;
-//        try {
-//            InputStream is = getResources().openRawResource(R.raw.gotland_612878m);
-//            route = new CSVRouteLoader().loadRoute(is);
-//        } catch (InvalidKMLException e) {
-//            throw new IllegalStateException("Failed to load route file", e);
-//        }
-//        ((Renderer)findViewById(R.id.the_canvas)).route = route;
-        // Read from disk using FileInputStream
+        renderer = ((Renderer)findViewById(R.id.the_canvas));
 
+        // start this as early as possibly to get the GPS going
+        initLocationService();
+
+        loadRoute();
+        loadPointsOfInterest();
+
+        renderer.loadBitmaps();
+    }
+
+    private Renderer renderer;
+
+    private void loadRoute() {
         InputStream is = getResources().openRawResource(R.raw.route);
         try {
             ObjectInputStream ois = new ObjectInputStream(is);
             List<QuadPoint> points = (List<QuadPoint>)ois.readObject();
             QuadNode quadRoot = (QuadNode)ois.readObject();
-            ((Renderer)findViewById(R.id.the_canvas)).points = points;
-            ((Renderer)findViewById(R.id.the_canvas)).quadRoot = quadRoot;
+            renderer.points = points;
+            renderer.quadRoot = quadRoot;
             ois.close();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to load route file", e);
+            throw new IllegalStateException("Failed to load route resource", e);
         }
+    }
 
-        initLocationService();
+    private void loadPointsOfInterest() {
+        InputStream is = getResources().openRawResource(R.raw.poi);
+        try {
+            ObjectInputStream ois = new ObjectInputStream(is);
+            List<PointOfInterest> poi = (List<PointOfInterest>)ois.readObject();
+            renderer.pointsOfInterest = poi;
+            ois.close();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load points of interest resource", e);
+        }
     }
 
     private void initLocationService() {
@@ -70,7 +85,6 @@ public class Main extends Activity {
         Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
                 location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
         XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
-        Renderer renderer = ((Renderer)findViewById(R.id.the_canvas));
         renderer.setGPSCoordinate(xy);
         renderer.invalidate();
     }

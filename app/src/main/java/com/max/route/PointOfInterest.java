@@ -2,12 +2,17 @@ package com.max.route;
 
 import com.max.logic.XY;
 
-public class PointOfInterest {
-    final String name;
-    final XY xy;
+import java.io.Serializable;
 
-    public PointOfInterest(String name, XY xy) {
+public class PointOfInterest implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    public final String name;
+    public final int utmX, utmY;
+
+    public PointOfInterest(String name, int utmX, int utmY) {
         this.name = name;
-        this.xy = xy;
+        this.utmX = utmX;
+        this.utmY = utmY;
     }
 }
