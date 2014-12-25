@@ -2,17 +2,15 @@ package com.max.route;
 
 import java.io.Serializable;
 
-public class QuadLeaf implements Serializable {
+public class QuadPoint implements Serializable {
     private static final long serialVersionUID = 1L;
 
     public final int x, y;
-    public transient QuadLeaf next;
     public final RoadSurface surface;
 
-    public QuadLeaf(int x, int y, QuadLeaf next, RoadSurface surface) {
+    public QuadPoint(int x, int y, RoadSurface surface) {
         this.x = x;
         this.y = y;
-        this.next = next;
         this.surface = surface;
     }
 

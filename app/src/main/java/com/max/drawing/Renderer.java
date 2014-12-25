@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
@@ -13,28 +12,23 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 
-import com.max.logic.Rectangle;
 import com.max.logic.Tile;
 import com.max.logic.TilePos;
 import com.max.logic.TileRectangle;
 import com.max.logic.XY;
 import com.max.logic.XYd;
 import com.max.main.R;
-import com.max.route.QuadLeaf;
+import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 import com.max.route.RoadSurface;
-import com.max.route.Route;
-import com.max.route.RouteSegment;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
 
 public class Renderer extends View {
 
-//    public Route route;
+    public List<QuadPoint> points;
     public QuadNode quadRoot;
 
     private Bitmap emptyTile;
@@ -188,25 +182,23 @@ public class Renderer extends View {
         XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
 
         // find route points visible on screen by querying quad tree
-        List<QuadLeaf> points = new ArrayList<>();
+        List<Integer> matchIdx = new ArrayList<>();
         int queryLevel = (MAX_ZOOM_LEVEL - zoomLevel)*2;
-        quadRoot.queryTree(queryLevel, (int)Math.floor(utm0.x), (int)Math.floor(utm0.y), (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), points);
+        quadRoot.queryTree(queryLevel, (int)Math.floor(utm0.x), (int)Math.floor(utm0.y), (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), points, matchIdx);
 
 //        System.out.printf("Calculate path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 
         Paint paint = new Paint();
         paint.setStrokeWidth(6);
-        for (QuadLeaf p : points) {
+        for (int idx : matchIdx) {
+            QuadPoint p = points.get(idx);
 //            paint.setColor(p.surface == RoadSurface.DIRT ? 0x6fff5f00 : 0x6fff0000);
             paint.setColor(p.surface == RoadSurface.DIRT ? 0xffff5f00 : 0xffff0000);
 
             XYd xyd = utmToScreen(new XYd(p.x, p.y));
             XY xy = new XY((int)(xyd.x+0.5), (int)(xyd.y+0.5));
 
-            // TODO optimize
-            QuadLeaf next = p;
-            for (int k = 0; k < (1<<queryLevel); ++k)
-                next = next.next;
+            QuadPoint next = points.get(Math.min(idx+(1<<queryLevel), points.size()-1));
 
             XYd xyd2 = utmToScreen(new XYd(next.x, next.y));
             XY xy2 = new XY((int)(xyd2.x+0.5), (int)(xyd2.y+0.5));

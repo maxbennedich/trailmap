@@ -1,17 +1,12 @@
 package com.max.main;
 
 import com.max.drawing.Renderer;
-import com.max.kml.CSVRouteLoader;
-import com.max.kml.InvalidKMLException;
-import com.max.kml.KMLRouteLoader;
 import com.max.latlng.LatLngHelper;
 import com.max.logic.XYd;
-import com.max.route.QuadLeaf;
+import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
-import com.max.route.Route;
 
 import android.content.Context;
-import android.content.res.XmlResourceParser;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -19,9 +14,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.app.Activity;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.util.List;
 
 public class Main extends Activity {
     @Override
@@ -42,14 +37,9 @@ public class Main extends Activity {
         InputStream is = getResources().openRawResource(R.raw.route);
         try {
             ObjectInputStream ois = new ObjectInputStream(is);
-            QuadLeaf firstLeaf = (QuadLeaf)ois.readObject(), prevLeaf = firstLeaf;
-            Object object;
-            for (object = ois.readObject(); object instanceof QuadLeaf; object = ois.readObject()) {
-                prevLeaf.next = (QuadLeaf)object;
-                prevLeaf = prevLeaf.next;
-            }
-            prevLeaf.next = firstLeaf;
-            QuadNode quadRoot = (QuadNode)object;
+            List<QuadPoint> points = (List<QuadPoint>)ois.readObject();
+            QuadNode quadRoot = (QuadNode)ois.readObject();
+            ((Renderer)findViewById(R.id.the_canvas)).points = points;
             ((Renderer)findViewById(R.id.the_canvas)).quadRoot = quadRoot;
             ois.close();
         } catch (Exception e) {
