@@ -20,17 +20,22 @@ import com.max.logic.TileRectangle;
 import com.max.logic.XY;
 import com.max.logic.XYd;
 import com.max.main.R;
+import com.max.route.QuadLeaf;
+import com.max.route.QuadNode;
 import com.max.route.RoadSurface;
 import com.max.route.Route;
 import com.max.route.RouteSegment;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Set;
 
 public class Renderer extends View {
 
-    public Route route;
+//    public Route route;
+    public QuadNode quadRoot;
 
     private Bitmap emptyTile;
 
@@ -178,6 +183,43 @@ public class Renderer extends View {
     }
 
     private void drawPath(Canvas canvas) {
+        // calculate utm coordinates for screen corners
+        XYd utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
+        XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
+
+        // find route points visible on screen by querying quad tree
+        List<QuadLeaf> points = new ArrayList<>();
+        int queryLevel = (MAX_ZOOM_LEVEL - zoomLevel)*2;
+        quadRoot.queryTree(queryLevel, (int)Math.floor(utm0.x), (int)Math.floor(utm0.y), (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), points);
+
+//        System.out.printf("Calculate path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
+
+        Paint paint = new Paint();
+        paint.setStrokeWidth(6);
+        for (QuadLeaf p : points) {
+//            paint.setColor(p.surface == RoadSurface.DIRT ? 0x6fff5f00 : 0x6fff0000);
+            paint.setColor(p.surface == RoadSurface.DIRT ? 0xffff5f00 : 0xffff0000);
+
+            XYd xyd = utmToScreen(new XYd(p.x, p.y));
+            XY xy = new XY((int)(xyd.x+0.5), (int)(xyd.y+0.5));
+
+            // TODO optimize
+            QuadLeaf next = p;
+            for (int k = 0; k < (1<<queryLevel); ++k)
+                next = next.next;
+
+            XYd xyd2 = utmToScreen(new XYd(next.x, next.y));
+            XY xy2 = new XY((int)(xyd2.x+0.5), (int)(xyd2.y+0.5));
+            canvas.drawLine(xy.x, xy.y, xy2.x, xy2.y, paint);
+
+//            paint.setColor(0x6f3f3f3f);
+//            canvas.drawPoint(xy.x, xy.y, paint);
+        }
+
+//        System.out.printf("Draw path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
+    }
+
+/*    private void drawPath(Canvas canvas) {
         Set<XY> pavedPixels = new HashSet<>();
         Set<XY> dirtPixels = new HashSet<>();
         for (RouteSegment segment : route.segments) {
@@ -218,7 +260,7 @@ public class Renderer extends View {
             canvas.drawPoint(p.x, p.y, paint);
 
 //        System.out.printf("Draw path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
-    }
+    }*/
 
     private void drawGPSMarker(Canvas canvas) {
         XYd screenXY = utmToScreen(gpsCoordinate);

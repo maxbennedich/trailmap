@@ -6,6 +6,8 @@ import com.max.kml.InvalidKMLException;
 import com.max.kml.KMLRouteLoader;
 import com.max.latlng.LatLngHelper;
 import com.max.logic.XYd;
+import com.max.route.QuadLeaf;
+import com.max.route.QuadNode;
 import com.max.route.Route;
 
 import android.content.Context;
@@ -17,7 +19,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.app.Activity;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 
 public class Main extends Activity {
     @Override
@@ -25,14 +29,32 @@ public class Main extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        Route route = null;
+//        Route route = null;
+//        try {
+//            InputStream is = getResources().openRawResource(R.raw.gotland_612878m);
+//            route = new CSVRouteLoader().loadRoute(is);
+//        } catch (InvalidKMLException e) {
+//            throw new IllegalStateException("Failed to load route file", e);
+//        }
+//        ((Renderer)findViewById(R.id.the_canvas)).route = route;
+        // Read from disk using FileInputStream
+
+        InputStream is = getResources().openRawResource(R.raw.route);
         try {
-            InputStream is = getResources().openRawResource(R.raw.gotland_612878m);
-            route = new CSVRouteLoader().loadRoute(is);
-        } catch (InvalidKMLException e) {
+            ObjectInputStream ois = new ObjectInputStream(is);
+            QuadLeaf firstLeaf = (QuadLeaf)ois.readObject(), prevLeaf = firstLeaf;
+            Object object;
+            for (object = ois.readObject(); object instanceof QuadLeaf; object = ois.readObject()) {
+                prevLeaf.next = (QuadLeaf)object;
+                prevLeaf = prevLeaf.next;
+            }
+            prevLeaf.next = firstLeaf;
+            QuadNode quadRoot = (QuadNode)object;
+            ((Renderer)findViewById(R.id.the_canvas)).quadRoot = quadRoot;
+            ois.close();
+        } catch (Exception e) {
             throw new IllegalStateException("Failed to load route file", e);
         }
-        ((Renderer)findViewById(R.id.the_canvas)).route = route;
 
         initLocationService();
     }
