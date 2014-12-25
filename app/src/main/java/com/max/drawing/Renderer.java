@@ -23,8 +23,10 @@ import com.max.route.QuadNode;
 import com.max.route.RoadSurface;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 public class Renderer extends View {
 
@@ -42,6 +44,8 @@ public class Renderer extends View {
     private static final double MIN_SCALE = 1 << MIN_ZOOM_LEVEL;
     private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 3;
     private double scaleFactor = 1 << zoomLevel;
+
+    /** Amount of "digital" zoom on top of integer tile level zoom, i.e. scaleFactor/2^zoomLevel. */
     private double scalingZoom = 1;
 
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
@@ -156,17 +160,17 @@ public class Renderer extends View {
                 XYd screenXY = utmToScreen(new XYd(utx0, uty0));
 
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
-                if (tile != null) {
+//                if (tile != null) {
                     Bitmap tileImg = tile == null ? emptyTile : tile.map;
                     copyImage(canvas, tileImg, screenXY);
-                }
+//                }
             }
         }
 
 //        Log.d("AccuMap", String.format("Load tiles: %.0f ms", (System.nanoTime() - time) * 1e-6)); time = System.nanoTime();
 
         drawPath(canvas);
-//        drawPointsOfInterest(zoomLevel);
+        drawPointsOfInterest(canvas);
 //        System.out.printf("Draw POIs: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 //        drawCrosshair();
 
@@ -182,7 +186,9 @@ public class Renderer extends View {
         XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
 
         // find route points visible on screen by querying quad tree
-        List<Integer> matchIdx = new ArrayList<>();
+        Set<Integer> matchIdx = new HashSet<>();
+        // scaleFactor = 1024 -> 0
+        //
         int queryLevel = (MAX_ZOOM_LEVEL - zoomLevel)*2;
         quadRoot.queryTree(queryLevel, (int)Math.floor(utm0.x), (int)Math.floor(utm0.y), (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), points, matchIdx);
 
@@ -198,61 +204,36 @@ public class Renderer extends View {
             XYd xyd = utmToScreen(new XYd(p.x, p.y));
             XY xy = new XY((int)(xyd.x+0.5), (int)(xyd.y+0.5));
 
-            QuadPoint next = points.get(Math.min(idx+(1<<queryLevel), points.size()-1));
+            // draw a connecting line to the next point (unless this is the last point)
+            if (idx != points.size()-1) {
+                int nextIdx = Math.min(idx + (1 << queryLevel), points.size() - 1);
+                QuadPoint next = points.get(nextIdx);
 
-            XYd xyd2 = utmToScreen(new XYd(next.x, next.y));
-            XY xy2 = new XY((int)(xyd2.x+0.5), (int)(xyd2.y+0.5));
-            canvas.drawLine(xy.x, xy.y, xy2.x, xy2.y, paint);
+                XYd xyd2 = utmToScreen(new XYd(next.x, next.y));
+                XY xy2 = new XY((int) (xyd2.x + 0.5), (int) (xyd2.y + 0.5));
+                canvas.drawLine(xy.x, xy.y, xy2.x, xy2.y, paint);
+            }
 
-//            paint.setColor(0x6f3f3f3f);
-//            canvas.drawPoint(xy.x, xy.y, paint);
+            if (idx != 0) {
+                int prevIdx = idx - (1 << queryLevel);
+                if (!matchIdx.contains(prevIdx)) {
+                    // previous point is not on screen; draw connecting (partial) line since it
+                    // would not be drawn by the code above
+                    QuadPoint prev = points.get(prevIdx);
+
+                    XYd xyd0 = utmToScreen(new XYd(prev.x, prev.y));
+                    XY xy0 = new XY((int) (xyd0.x + 0.5), (int) (xyd0.y + 0.5));
+                    canvas.drawLine(xy0.x, xy0.y, xy.x, xy.y, paint);
+                }
+            }
         }
 
 //        System.out.printf("Draw path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
     }
 
-/*    private void drawPath(Canvas canvas) {
-        Set<XY> pavedPixels = new HashSet<>();
-        Set<XY> dirtPixels = new HashSet<>();
-        for (RouteSegment segment : route.segments) {
-            // see if segment could possibly be on screen by looking at the bounding box
-            // this will get rid of the majority of segments (as long as they are not too large)
-            XYd min = utmToScreen(segment.boundingBox.min);
-            XYd max = utmToScreen(segment.boundingBox.max);
-            if ((min.x < 0 && max.x < 0) || (min.y < 0 && max.y < 0) ||
-                    (min.x >= getWidth() && max.x >= getWidth()) ||
-                    (min.y >= getHeight() && max.y >= getHeight())) {
-                continue;
-            }
+    private void drawPointsOfInterest(Canvas canvas) {
 
-            for (XY xy : segment.points) {
-                XYd xyd = new XYd(xy.x, xy.y);
-                XYd pdbl = utmToScreen(xyd);
-                XY p = new XY((int)(pdbl.x+0.5), (int)(pdbl.y+0.5));
-                if (!(p.x >= 0 && p.y >= 0 && p.x < getWidth() && p.y < getHeight()))
-                    continue; // note: might skip pixels near border: should add w/2...
-
-                (segment.roadSurface == RoadSurface.DIRT ? dirtPixels : pavedPixels).add(p);
-            }
-        }
-
-//        System.out.printf("Calculate path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
-
-        pavedPixels.removeAll(dirtPixels);
-
-        Paint paint = new Paint();
-        paint.setStrokeWidth(5);
-
-        paint.setColor(0x6fff0000);
-        for (XY p : pavedPixels)
-            canvas.drawPoint(p.x, p.y, paint);
-
-        paint.setColor(0x6fff5f00);
-        for (XY p : dirtPixels)
-            canvas.drawPoint(p.x, p.y, paint);
-
-//        System.out.printf("Draw path: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
-    }*/
+    }
 
     private void drawGPSMarker(Canvas canvas) {
         XYd screenXY = utmToScreen(gpsCoordinate);
