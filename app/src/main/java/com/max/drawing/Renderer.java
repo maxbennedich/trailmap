@@ -318,11 +318,11 @@ public class Renderer extends View {
         int queryLevel = (int)(16-log2(scaleFactor)*1.5);
         queryLevel = Math.min(10, Math.max(0, queryLevel));
         quadRoot.queryTree(queryLevel, (int) Math.floor(utm0x), (int) Math.floor(utm0y), (int) Math.ceil(utm1x), (int) Math.ceil(utm1y), points, matches);
+
+        log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
+
         if (matches.matchCount != 0) {
             matches.sort();
-
-            log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
-            log(String.format("p = %d-%d", matches.get(0), matches.get(matches.matchCount - 1)));
 
             Paint paint = new Paint();
             paint.setStrokeWidth(6);
@@ -331,40 +331,38 @@ public class Renderer extends View {
             Path[] paths = new Path[2];
             paths[0] = new Path();
             paths[1] = new Path();
-            int prevIdx = -1;
             int stepSize = 1 << queryLevel;
 
+            int prevIdx = -1;
             QuadPoint p, p2 = null;
             int idx2 = -1;
-            float px, py, p2x = 0, p2y = 0;
-            int pSurf, p2Surf = 0;
+            float p2x = 0, p2y = 0;
+            int p2Surf = 0;
 
             for (int k = 0; k < matches.matchCount; ++k) {
                 int idx = matches.get(k);
-                if (idx == idx2) {
-                    // same point as previous "next"; don't calculate again
-                    p = p2;
-                    px = p2x;
-                    py = p2y;
-                    pSurf = p.surface.ordinal();
-                    if (pSurf != p2Surf)
-                        paths[pSurf].moveTo(px, py);
-                } else {
+
+                if (prevIdx == -1 || idx - prevIdx > stepSize) {
+                    // just entered screen, draw partial on-screen segment
                     p = points.get(idx);
-                    px = (float) utmToScreenX(p.x);
-                    py = (float) utmToScreenY(p.y);
+                    float px = (float) utmToScreenX(p.x);
+                    float py = (float) utmToScreenY(p.y);
 
-                    if (prevIdx == -1 || idx - prevIdx > stepSize) {
-                        // just entered screen, draw partial on-screen segment
-                        // the math below for idx=0 is to select the last point for the current query level
-                        QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
-                        float p0x = (float) utmToScreenX(p0.x);
-                        float p0y = (float) utmToScreenY(p0.y);
-                        paths[p0.surface.ordinal()].moveTo(p0x, p0y);
-                        paths[p0.surface.ordinal()].lineTo(px, py);
-                    }
+                    // the math below for idx=0 is to select the last point for the current query level
+                    QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
+                    float p0x = (float) utmToScreenX(p0.x);
+                    float p0y = (float) utmToScreenY(p0.y);
+                    paths[p0.surface.ordinal()].moveTo(p0x, p0y);
+                    paths[p0.surface.ordinal()].lineTo(px, py);
 
+                    // start next surface type segment
                     paths[p.surface.ordinal()].moveTo(px, py);
+                } else {
+                    // same point as previous "next"; don't calculate again; move if surface changed
+                    p = p2;
+                    int pSurf = p2.surface.ordinal();
+                    if (pSurf != p2Surf)
+                        paths[pSurf].moveTo(p2x, p2y);
                 }
 
                 idx2 = Math.min(idx + stepSize, points.size() - 1);
@@ -380,9 +378,9 @@ public class Renderer extends View {
             canvas.drawPath(paths[0], paint);
             paint.setColor(0xffffff00);
             canvas.drawPath(paths[1], paint);
-        }
 
-        log("Draw paths");
+            log("Draw path");
+        }
     }
 
     private void drawPointsOfInterest(Canvas canvas) {
