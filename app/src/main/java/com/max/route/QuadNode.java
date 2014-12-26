@@ -36,14 +36,16 @@ public class QuadNode implements Serializable {
     }
 
     public void queryTree(int level, int qx0, int qy0, int qx1, int qy1, List<QuadPoint> points, Renderer.QuadMatches matches) {
-        if (pointIdx != null)
-            for (int idx : pointIdx)
-                if (level(idx) >= level && qx0 <= points.get(idx).x && qx1 >= points.get(idx).x && qy0 <= points.get(idx).y && qy1 >= points.get(idx).y)
-                    matches.add(idx);
+        if (pointIdx != null) {
+            for (int idx : pointIdx) {
+                QuadPoint p = points.get(idx);
+                if (level(idx) >= level && qx0 <= p.x && qx1 >= p.x && qy0 <= p.y && qy1 >= p.y)
+                    matches.add(p.surface.ordinal(), idx);
+            }
+        }
         if (q != null)
-            for (int k = 0; k < 4; ++k) {
+            for (int k = 0; k < 4; ++k)
                 if (q[k] != null && q[k].maxChildLevel >= level && qx0 <= q[k].x1 && qx1 >= q[k].x0 && qy0 <= q[k].y1 && qy1 >= q[k].y0)
                     q[k].queryTree(level, qx0, qy0, qx1, qy1, points, matches);
-            }
     }
 }
