@@ -1,11 +1,9 @@
 package com.max.logic;
 
-import com.max.drawing.Renderer;
-
 public class XY {
     public final int x, y;
 
-    public XY(int x, int y) { Renderer.XYC++; this.x = x; this.y = y; }
+    public XY(int x, int y) { this.x = x; this.y = y; }
 
     public XY div(int n) { return new XY(x/n, y/n); }
     public XY mul(double d) { return new XY((int)(x*d+0.5), (int)(y*d+0.5)); }

@@ -85,7 +85,7 @@ public class Main extends Activity {
         Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
                 location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
         XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
-        renderer.setGPSCoordinate(xy);
+        renderer.setGPSCoordinate(xy.x, xy.y);
         renderer.invalidate();
     }
 }

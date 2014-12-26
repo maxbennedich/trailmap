@@ -1,6 +1,7 @@
 package com.max.drawing;
 
 import android.content.Context;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -26,6 +27,8 @@ import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 import com.max.route.RoadSurface;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,17 +65,20 @@ public class Renderer extends View {
     /** Amount of "digital" zoom on top of integer tile level zoom, i.e. scaleFactor/2^zoomLevel. */
     private double scalingZoom = scaleFactor / (1<<zoomLevel);
 
+    private static final int ZOOM_LEVEL_SHOW_LABELS = 8;
+
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
 
     /** Contains all tile positions/resource ids for which we have a tile (on disk), for each zoom level. */
-    private Map<Integer, Map<TilePos, Integer>> existingTilesByZoomLevel = new HashMap<>();
+    private Map<Integer, Set<TilePos>> existingTilesByZoomLevel = new HashMap<>();
 
 //    private XYd centerUtm = new XYd(669_715, 6_583_611);
-    private XYd centerUtm = new XYd(712_650, 6_370_272);
-    private XYd gpsCoordinate = new XYd(centerUtm.x+100, centerUtm.y);
+    private double centerUtmX = 712_650, centerUtmY = 6_370_272;
+    private double gpsX = centerUtmX+100, gpsY = centerUtmY;
 
-    private static final XY ROUTE_PIXEL_OFFSET = new XY(-1, -1);
+    private static final int ROUTE_PIXEL_OFFSET_X = -1;
+    private static final int ROUTE_PIXEL_OFFSET_Y = -1;
 
     private LinkedHashMap<TilePos, Tile> getTileCache() {
         return new LinkedHashMap<TilePos, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
@@ -115,49 +121,46 @@ public class Renderer extends View {
 
     /** Populate the structure of available tiles. */
     private void inventoryTiles() {
-        Pattern p = Pattern.compile("tile_(\\d{1,2})_(\\d+)_(\\d+)");
+        Pattern p = Pattern.compile("tile_(\\d{1,2})_(\\d+)_(\\d+).png");
 
-        // TODO look into assets and AssetManager
-        R.drawable dr = new R.drawable();
-        Class<R.drawable> c = R.drawable.class;
-        Field[] fields = c.getDeclaredFields();
-        for (int i = 0; i < fields.length; ++i) {
-            try {
-                int resourceId = fields[i].getInt(dr);
-                String name = fields[i].getName();
-                Log.d("AccuMap", name);
-                Matcher m = p.matcher(name);
-                if (m.find()) {
-                    int zoomLevel = Integer.valueOf(m.group(1));
-                    int tx = Integer.valueOf(m.group(2));
-                    int ty = Integer.valueOf(m.group(3));
-                    Map<TilePos, Integer> tileMap = existingTilesByZoomLevel.get(zoomLevel);
-                    if (tileMap == null)
-                        existingTilesByZoomLevel.put(zoomLevel, tileMap = new HashMap<TilePos, Integer>());
-                    tileMap.put(new TilePos(zoomLevel, tx, ty), resourceId);
-                }
-            } catch (Exception e) {
-                continue;
+        AssetManager assMan = getContext().getAssets();
+        String[] assets;
+        try {
+            assets = assMan.list("");
+        } catch (IOException e) {
+            throw new IllegalStateException("Error loading assets", e);
+        }
+
+        for (String asset : assets) {
+            Matcher m = p.matcher(asset);
+            if (m.find()) {
+                int zoomLevel = Integer.valueOf(m.group(1));
+                int tx = Integer.valueOf(m.group(2));
+                int ty = Integer.valueOf(m.group(3));
+                Set<TilePos> tileSet = existingTilesByZoomLevel.get(zoomLevel);
+                if (tileSet == null)
+                    existingTilesByZoomLevel.put(zoomLevel, tileSet = new HashSet<TilePos>());
+                tileSet.add(new TilePos(zoomLevel, tx, ty));
             }
         }
     }
 
     private Tile loadTile(int zoomLevel, TilePos tp) {
         // see if tile exists
-        Map<TilePos, Integer> tileMap = existingTilesByZoomLevel.get(zoomLevel);
-        Integer resourceId;
-        if (tileMap != null && (resourceId = tileMap.get(tp)) != null) {
-            Log.d("AccuMap", "Loading resource for " + tp);
-            Bitmap map = BitmapFactory.decodeResource(getResources(), resourceId, NO_SCALING);
-            // resource is null if not found (should not happen since id is not 0)
-            if (map != null)
+        Set<TilePos> tileSet = existingTilesByZoomLevel.get(zoomLevel);
+        if (tileSet != null && tileSet.contains(tp)) {
+            String tileName = "tile_"+zoomLevel+"_"+tp.tx+"_"+tp.ty+".png";
+            Log.d("AccuMap", "Loading " + tileName);
+            try {
+                InputStream is = getContext().getAssets().open(tileName);
+                Bitmap map = BitmapFactory.decodeStream(is, null, NO_SCALING);
+                is.close();
                 return new Tile(tp, map);
+            } catch (IOException e) {
+                throw new IllegalStateException("Error loading asset "+tileName, e);
+            }
         }
         return null;
-    }
-
-    XYd pixelToUtm(XYd pixel) {
-        return new XYd(pixelToUtm(pixel.x), pixelToUtm(pixel.y));
     }
 
     int pixelToUtm(double pixel) {
@@ -165,37 +168,34 @@ public class Renderer extends View {
         return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
-    XYd utmToPixel(XYd utmxy) {
-        return new XYd(utmToPixel(utmxy.x), utmToPixel(utmxy.y));
-    }
-
     double utmToPixel(double utm) {
         // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return utm/(1<<(20-zoomLevel-8)) * scalingZoom; // 8 since tile is 256 pixels wide
     }
 
-    XYd utmToScreen(XYd utmxy) {
-        XYd mid = getScreenSize().div(2).sub(1, 1); // y off by one?
-        XYd utp = utmToPixel(utmxy.sub(centerUtm));
-        return new XYd(mid.x + utp.x, mid.y - utp.y);
+    double utmToScreenX(int utmx) {
+        return getWidth()/2-1 + utmToPixel(utmx-centerUtmX);
     }
 
-    XYd screenToUtm(XYd pixel) {
-        XYd mid = getScreenSize().div(2).sub(1, 1); // y off by one?
-        XYd dif = new XYd(mid.x - pixel.x, pixel.y - mid.y);
-        XYd utp = pixelToUtm(dif);
-        return centerUtm.add(utp);
+    double utmToScreenY(int utmy) {
+        return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
     }
 
-    public void setGPSCoordinate(XYd utm) {
-        gpsCoordinate = utm;
+    double screenToUtmX(double pixelX) {
+        return centerUtmX + pixelToUtm(getWidth()/2-1 - pixelX);
     }
 
-    public XYd getScreenSize() { return new XYd(getWidth(), getHeight()); }
+    double screenToUtmY(double pixelY) {
+        return centerUtmY - pixelToUtm(getHeight()/2-1 - pixelY); // y off by one?
+    }
+
+    public void setGPSCoordinate(double utmX, double utmY) {
+        gpsX = utmX;
+        gpsY = utmY;
+    }
 
     @Override
     synchronized public void onDraw(Canvas canvas) {
-        XYDC = XYC = 0;
         startLog();
 
         // clear screen
@@ -208,11 +208,13 @@ public class Renderer extends View {
         log("Clear screen");
 
         // calculate utm coordinates for screen corners
-        XYd utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
-        XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
+        double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
+        double utm0y = centerUtmY-pixelToUtm(getHeight()/2-1);
+        double utm1x = centerUtmX+pixelToUtm(getWidth()/2);
+        double utm1y = centerUtmY+pixelToUtm(getHeight()/2);
 
-        TileRectangle tr = new TileRectangle((int)Math.floor(utm0.x), (int)Math.floor(utm0.y),
-                (int)Math.ceil(utm1.x), (int)Math.ceil(utm1.y), zoomLevel);
+        TileRectangle tr = new TileRectangle((int)Math.floor(utm0x), (int)Math.floor(utm0y),
+                (int)Math.ceil(utm1x), (int)Math.ceil(utm1y), zoomLevel);
 
         for (int ty = tr.ty0; ty <= tr.ty1; ++ty) {
             for (int tx = tr.tx0; tx <= tr.tx1; ++tx) {
@@ -220,12 +222,13 @@ public class Renderer extends View {
                 int utx0 = tx * tr.tileSize - 1_200_000;
                 int uty0 = 8_500_000 - ty * tr.tileSize;
 
-                XYd screenXY = utmToScreen(new XYd(utx0, uty0));
+                double screenX = utmToScreenX(utx0);
+                double screenY = utmToScreenY(uty0);
 
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
                 if (tile != null) {
                     Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                    copyImage(canvas, tileImg, screenXY);
+                    copyImage(canvas, tileImg, screenX, screenY);
                 }
             }
         }
@@ -234,7 +237,6 @@ public class Renderer extends View {
 
         drawPath(canvas);
 //        drawPointsOfInterest(canvas);
-//        log("Draw points of interest");
 //        System.out.printf("Draw POIs: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 //        drawCrosshair();
 
@@ -243,19 +245,9 @@ public class Renderer extends View {
 //        imagePanel.repaint();
 //        System.out.printf("Repaint: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 
-        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtm.x, centerUtm.y, zoomLevel, scaleFactor));
-        log("XYD count = " + XYDC);
-        log("XY count = " + XYC);
-        // when viewing Gotland: creating up to 16k XYd objs and 2k XY objs !!
-        // XYd: 24b --> 384k
-        // XY: 16b --> 32k
-        // Tot --> 416k every frame !!
-        // 30 fps --> 12M per second !!
+        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
         drawStats(canvas);
     }
-
-    public static int XYDC = 0;
-    public static int XYC = 0;
 
     List<Statistic> stats = new ArrayList<>();
     long lastTime;
@@ -311,16 +303,16 @@ public class Renderer extends View {
 
     private void drawPath(Canvas canvas) {
         // calculate utm coordinates for screen corners
-        XYd utm0 = centerUtm.sub(pixelToUtm(getScreenSize().div(2).sub(1, 1)));
-        XYd utm1 = centerUtm.add(pixelToUtm(getScreenSize().div(2)));
+        double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
+        double utm0y = centerUtmY-pixelToUtm(getHeight()/2-1);
+        double utm1x = centerUtmX+pixelToUtm(getWidth()/2);
+        double utm1y = centerUtmY+pixelToUtm(getHeight()/2);
 
         // find route points visible on screen by querying quad tree
         matches.clear();
-        // scaleFactor = 1024 -> 0
-        //
         int queryLevel = (int)(16-log2(scaleFactor)*1.5);
         queryLevel = Math.min(10, Math.max(0, queryLevel));
-        quadRoot.queryTree(queryLevel, (int) Math.floor(utm0.x), (int) Math.floor(utm0.y), (int) Math.ceil(utm1.x), (int) Math.ceil(utm1.y), points, matches);
+        quadRoot.queryTree(queryLevel, (int) Math.floor(utm0x), (int) Math.floor(utm0y), (int) Math.ceil(utm1x), (int) Math.ceil(utm1y), points, matches);
 
         log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
 
@@ -334,17 +326,17 @@ public class Renderer extends View {
 //            paint.setColor(p.surface == RoadSurface.DIRT ? 0x6fff5f00 : 0x6fff0000);
             paint.setColor(p.surface == RoadSurface.DIRT ? 0xffff5f00 : 0xffff0000);
 
-            XYd xyd = utmToScreen(new XYd(p.x, p.y));
-            XY xy = new XY((int)(xyd.x+0.5), (int)(xyd.y+0.5));
+            int x = (int)(utmToScreenX(p.x)+0.5);
+            int y = (int)(utmToScreenY(p.y)+0.5);
 
             // draw a connecting line to the next point (unless this is the last point)
             if (idx != points.size()-1) {
                 int nextIdx = Math.min(idx + (1 << queryLevel), points.size() - 1);
                 QuadPoint next = points.get(nextIdx);
 
-                XYd xyd2 = utmToScreen(new XYd(next.x, next.y));
-                XY xy2 = new XY((int) (xyd2.x + 0.5), (int) (xyd2.y + 0.5));
-                canvas.drawLine(xy.x, xy.y, xy2.x, xy2.y, paint);
+                int x2 = (int)(utmToScreenX(next.x)+0.5);
+                int y2 = (int)(utmToScreenY(next.y)+0.5);
+                canvas.drawLine(x, y, x2, y2, paint);
                 ++lines;
             }
 
@@ -355,9 +347,9 @@ public class Renderer extends View {
                     // would not be drawn by the code above
                     QuadPoint prev = points.get(prevIdx);
 
-                    XYd xyd0 = utmToScreen(new XYd(prev.x, prev.y));
-                    XY xy0 = new XY((int) (xyd0.x + 0.5), (int) (xyd0.y + 0.5));
-                    canvas.drawLine(xy0.x, xy0.y, xy.x, xy.y, paint);
+                    int x0 = (int)(utmToScreenX(prev.x)+0.5);
+                    int y0 = (int)(utmToScreenY(prev.y)+0.5);
+                    canvas.drawLine(x0, y0, x, y, paint);
                 }
             }
         }
@@ -368,39 +360,41 @@ public class Renderer extends View {
     private void drawPointsOfInterest(Canvas canvas) {
         Paint paint = new Paint();
 //        paint.setTypeface();
-        paint.setTextSize(12);
+        paint.setTextSize(20);
         paint.setStrokeWidth(8);
+        paint.setColor(0xffffff00);
 
         for (int k = 0; k < pointsOfInterest.size(); ++k) {
             PointOfInterest poi = pointsOfInterest.get(k);
-            String text = String.format("%s (%d/%d)", poi.name, k + 1, pointsOfInterest.size());
-            drawPointOfInterest(canvas, paint, poi.utmX, poi.utmY, text);
+            double x = utmToScreenX(poi.utmX);
+            double y = utmToScreenY(poi.utmY);
+            if (x >= 0 && x < getWidth() && y >= 0 && y < getHeight()) {
+                canvas.drawPoint((float) x, (float) y, paint);
+
+                if (zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
+                    String text = String.format("%s (%d/%d)", poi.name, k + 1, pointsOfInterest.size());
+                    paint.setColor(0xffffffff);
+                    canvas.drawText(text, (float) x + 5, (float) y, paint);
+                    paint.setColor(0xffffff00);
+                }
+            }
         }
-    }
 
-    private void drawPointOfInterest(Canvas canvas, Paint paint, int utmX, int utmY, String text) {
-        XYd xyd = utmToScreen(new XYd(utmX, utmY));
-        if (xyd.x < 0 || xyd.x >= getWidth() || xyd.y < 0 || xyd.y >= getHeight())
-            return; // note: might skip content near border
-
-        paint.setColor(0xffffff00);
-        canvas.drawPoint((float)xyd.x, (float)xyd.y, paint);
-
-//        paint.setColor(0xffffffff);
-//        canvas.drawText(text, (float)xyd.x+5, (float)xyd.y, paint);
+        log("Draw points of interest");
     }
 
     private void drawGPSMarker(Canvas canvas) {
-        XYd screenXY = utmToScreen(gpsCoordinate);
-        canvas.drawBitmap(gpsIcon, (int)(screenXY.x-gpsIcon.getWidth()/2+0.5), (int)(screenXY.y-gpsIcon.getHeight()/2+0.5), null);
+        double x = utmToScreenX((int)(gpsX+0.5));
+        double y = utmToScreenY((int)(gpsY+0.5));
+        canvas.drawBitmap(gpsIcon, (int)(x-gpsIcon.getWidth()/2+0.5), (int)(y-gpsIcon.getHeight()/2+0.5), null);
     }
 
-    private void copyImage(Canvas canvas, Bitmap src, XYd pos) {
+    private void copyImage(Canvas canvas, Bitmap src, double posX, double posY) {
         int sw = src.getWidth(), sh = src.getHeight();
         double dw = sw * scalingZoom;
         double dh = sh * scalingZoom;
         Rect srcRect = new Rect(0, 0, sw, sh);
-        Rect dstRect = new Rect((int)(pos.x+0.5), (int)(pos.y+0.5), (int)(pos.x+dw+0.5), (int)(pos.y+dh+0.5));
+        Rect dstRect = new Rect((int)(posX+0.5), (int)(posY+0.5), (int)(posX+dw+0.5), (int)(posY+dh+0.5));
         canvas.drawBitmap(src, srcRect, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -433,7 +427,8 @@ public class Renderer extends View {
                 if (actionMode == ActionMode.PAN) {
                     double dx = event.getX() - panStartX;
                     double dy = event.getY() - panStartY;
-                    centerUtm = new XYd(centerUtm.x - pixelToUtm(dx), centerUtm.y + pixelToUtm(dy));
+                    centerUtmX -= pixelToUtm(dx);
+                    centerUtmY += pixelToUtm(dy);
                     panStartX = event.getX();
                     panStartY = event.getY();
                     invalidate();
@@ -478,13 +473,16 @@ public class Renderer extends View {
             double focusDiffX = detector.getFocusX() - prevFocusX;
             double focusDiffY = detector.getFocusY() - prevFocusY;
             if (focusDiffX != 0 || focusDiffY != 0) {
-                centerUtm = new XYd(centerUtm.x - pixelToUtm(focusDiffX), centerUtm.y + pixelToUtm(focusDiffY));
+                centerUtmX -= pixelToUtm(focusDiffX);
+                centerUtmY += pixelToUtm(focusDiffY);
             }
 
             // now zoom
             double actualScale = scaleFactor / oldScaleFactor;
-            XYd p = screenToUtm(new XYd(detector.getFocusX(), detector.getFocusY()));
-            centerUtm = p.sub(p.sub(centerUtm).mul(actualScale));
+            double px = screenToUtmX(detector.getFocusX());
+            double py = screenToUtmY(detector.getFocusY());
+            centerUtmX = px-((px-centerUtmX)*actualScale);
+            centerUtmY = py-((py-centerUtmY)*actualScale);
 
             prevFocusX = detector.getFocusX();
             prevFocusY = detector.getFocusY();

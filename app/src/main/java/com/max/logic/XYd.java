@@ -1,11 +1,9 @@
 package com.max.logic;
 
-import com.max.drawing.Renderer;
-
 public class XYd {
     public final double x, y;
 
-    public XYd(double x, double y) { Renderer.XYDC++; this.x = x; this.y = y; }
+    public XYd(double x, double y) { this.x = x; this.y = y; }
 
     public XYd div(double n) { return new XYd(x/n, y/n); }
     public XYd mul(double d) { return new XYd(x*d, y*d); }
