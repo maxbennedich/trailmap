@@ -40,7 +40,7 @@ public class QuadNode implements Serializable {
             for (int idx : pointIdx) {
                 QuadPoint p = points.get(idx);
                 if (level(idx) >= level && qx0 <= p.x && qx1 >= p.x && qy0 <= p.y && qy1 >= p.y)
-                    matches.add(p.surface.ordinal(), idx);
+                    matches.add(idx);
             }
         }
         if (q != null)

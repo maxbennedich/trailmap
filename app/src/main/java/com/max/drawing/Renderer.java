@@ -292,66 +292,19 @@ public class Renderer extends View {
     private static final int MAX_QUAD_TREE_MATCHES = 4096;
     public static class QuadMatches {
         private int[] matchIdx = new int[MAX_QUAD_TREE_MATCHES];
-        public int[] matchCount = new int[2];
+        public int matchCount;
 
         public void clear() {
-            matchCount[0] = matchCount[1] = 0;
+            matchCount = 0;
         }
-        public void add(int type, int idx) {
-            matchIdx[type*MAX_QUAD_TREE_MATCHES/2 + matchCount[type]++] = idx;
+        public void add(int idx) { matchIdx[matchCount++] = idx; }
+        public int get(int idx) {
+            return matchIdx[idx];
         }
-        public int get(int type, int idx) {
-            return matchIdx[type*MAX_QUAD_TREE_MATCHES/2 + idx];
-        }
-        public void sort() {
-            Arrays.sort(matchIdx, 0, matchCount[0]);
-            Arrays.sort(matchIdx, MAX_QUAD_TREE_MATCHES/2, MAX_QUAD_TREE_MATCHES/2+matchCount[1]);
-        }
+        public void sort() { Arrays.sort(matchIdx, 0, matchCount); }
     }
 
     QuadMatches matches = new QuadMatches();
-
-    private class PathBuilder {
-        final int stepSize;
-
-        int prevIdx;
-
-        Path path;
-
-        PathBuilder(Path path, int queryLevel) {
-            this.path = path;
-            stepSize = 1 << queryLevel;
-            prevIdx = -1;
-        }
-
-        private void addPoint(int idx) {
-            if (prevIdx != -1 && idx - prevIdx > stepSize) {
-                // one or more points skipped -- wrap up segment and move on to next
-                lineTo(prevIdx + stepSize); // finish last segment (towards screen edge)
-                if (idx != prevIdx + 2*stepSize) // single point off-screen? don't move
-                    moveTo(idx - stepSize); // include one off-screen point (from screen edge)
-                lineTo(idx);
-            }
-
-            if (prevIdx == -1) {
-                moveTo(idx); // first point in path
-            } else {
-                lineTo(idx); // contiguous point added
-            }
-
-            prevIdx = idx;
-        }
-
-        private void moveTo(int idx) {
-            QuadPoint p = points.get(idx);
-            path.moveTo((float)utmToScreenX(p.x), (float)utmToScreenY(p.y));
-        }
-
-        private void lineTo(int idx) {
-            QuadPoint p = points.get(idx);
-            path.lineTo((float)utmToScreenX(p.x), (float)utmToScreenY(p.y));
-        }
-    }
 
     private void drawPath(Canvas canvas) {
         // calculate utm coordinates for screen corners
@@ -365,27 +318,68 @@ public class Renderer extends View {
         int queryLevel = (int)(16-log2(scaleFactor)*1.5);
         queryLevel = Math.min(10, Math.max(0, queryLevel));
         quadRoot.queryTree(queryLevel, (int) Math.floor(utm0x), (int) Math.floor(utm0y), (int) Math.ceil(utm1x), (int) Math.ceil(utm1y), points, matches);
-        matches.sort();
+        if (matches.matchCount != 0) {
+            matches.sort();
 
-        log(String.format("Calculate path scale=%.0f, ql=%d, points=%d/%d", scaleFactor, queryLevel, matches.matchCount[0],  matches.matchCount[1]));
+            log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
+            log(String.format("p = %d-%d", matches.get(0), matches.get(matches.matchCount - 1)));
 
-        Paint paint = new Paint();
-        paint.setStrokeWidth(6);
-        paint.setStyle(Paint.Style.STROKE);
+            Paint paint = new Paint();
+            paint.setStrokeWidth(6);
+            paint.setStyle(Paint.Style.STROKE);
 
-        // draw one path per surface type
-        for (int type = 0; type < 2; ++type) {
-            Path path = new Path();
-            PathBuilder pathBuilder = new PathBuilder(path, queryLevel);
-            for (int k = 0; k < matches.matchCount[type]; ++k) {
-                int idx = matches.get(type, k);
-                pathBuilder.addPoint(idx);
+            Path[] paths = new Path[2];
+            paths[0] = new Path();
+            paths[1] = new Path();
+            int prevIdx = -1;
+            int stepSize = 1 << queryLevel;
+
+            QuadPoint p, p2 = null;
+            int idx2 = -1;
+            float px, py, p2x = 0, p2y = 0;
+            int pSurf, p2Surf = 0;
+
+            for (int k = 0; k < matches.matchCount; ++k) {
+                int idx = matches.get(k);
+                if (idx == idx2) {
+                    // same point as previous "next"; don't calculate again
+                    p = p2;
+                    px = p2x;
+                    py = p2y;
+                    pSurf = p.surface.ordinal();
+                    if (pSurf != p2Surf)
+                        paths[pSurf].moveTo(px, py);
+                } else {
+                    p = points.get(idx);
+                    px = (float) utmToScreenX(p.x);
+                    py = (float) utmToScreenY(p.y);
+
+                    if (prevIdx == -1 || idx - prevIdx > stepSize) {
+                        // just entered screen, draw partial on-screen segment
+                        // the math below for idx=0 is to select the last point for the current query level
+                        QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
+                        float p0x = (float) utmToScreenX(p0.x);
+                        float p0y = (float) utmToScreenY(p0.y);
+                        paths[p0.surface.ordinal()].moveTo(p0x, p0y);
+                        paths[p0.surface.ordinal()].lineTo(px, py);
+                    }
+
+                    paths[p.surface.ordinal()].moveTo(px, py);
+                }
+
+                idx2 = Math.min(idx + stepSize, points.size() - 1);
+                p2 = points.get(idx2);
+                p2x = (float) utmToScreenX(p2.x);
+                p2y = (float) utmToScreenY(p2.y);
+                p2Surf = p.surface.ordinal();
+                paths[p2Surf].lineTo(p2x, p2y);
+
+                prevIdx = idx;
             }
-            // finish final segment
-            if (pathBuilder.prevIdx != -1 && pathBuilder.prevIdx != points.size()-1)
-                pathBuilder.lineTo(Math.min(pathBuilder.prevIdx + pathBuilder.stepSize, points.size()-1));
-            paint.setColor(type == 0 ? 0xffff0000 : 0xffff5f00);
-            canvas.drawPath(path, paint);
+            paint.setColor(0xffff0000);
+            canvas.drawPath(paths[0], paint);
+            paint.setColor(0xffffff00);
+            canvas.drawPath(paths[1], paint);
         }
 
         log("Draw paths");
