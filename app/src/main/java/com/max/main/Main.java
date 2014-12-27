@@ -57,6 +57,11 @@ public class Main extends Activity {
         try {
             ObjectInputStream ois = new ObjectInputStream(is);
             List<PointOfInterest> poi = (List<PointOfInterest>)ois.readObject();
+
+            // set labels
+            for (int k = 0; k < poi.size(); ++k)
+                poi.get(k).label = String.format("%s (%d/%d)", poi.get(k).name, k + 1, poi.size());
+
             renderer.pointsOfInterest = poi;
             ois.close();
         } catch (Exception e) {

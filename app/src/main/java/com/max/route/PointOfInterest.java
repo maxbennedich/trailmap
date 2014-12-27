@@ -8,6 +8,7 @@ public class PointOfInterest implements Serializable {
     private static final long serialVersionUID = 1L;
 
     public final String name;
+    public String label;
     public final int utmX, utmY;
 
     public PointOfInterest(String name, int utmX, int utmY) {

@@ -194,9 +194,12 @@ public class Renderer extends View {
         gpsY = utmY;
     }
 
+    long prevOnDraw = -1;
+
     @Override
     synchronized public void onDraw(Canvas canvas) {
-        startLog();
+//        startLog();
+        long t0 = time();
 
         // clear screen
         Paint p = new Paint();
@@ -205,7 +208,7 @@ public class Renderer extends View {
         p.setStrokeWidth(1);
         canvas.drawRect(0, 0, getWidth(), getHeight(), p);
 
-        log("Clear screen");
+//        log("Clear screen");
 
         // calculate utm coordinates for screen corners
         double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
@@ -226,27 +229,37 @@ public class Renderer extends View {
                 double screenY = utmToScreenY(uty0);
 
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
-                if (tile != null) {
+//                if (tile != null) {
                     Bitmap tileImg = tile == null ? emptyTile : tile.map;
                     copyImage(canvas, tileImg, screenX, screenY);
-                }
+//                }
             }
         }
 
-        log("Draw tiles");
+//        log("Draw tiles");
 
         drawPath(canvas);
 //        drawPointsOfInterest(canvas);
-//        System.out.printf("Draw POIs: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
 //        drawCrosshair();
 
         drawGPSMarker(canvas);
 
-//        imagePanel.repaint();
-//        System.out.printf("Repaint: %.0f ms\n", (System.nanoTime()-time)*1e-6); time = System.nanoTime();
+//        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
 
-        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
-        drawStats(canvas);
+        long time = time();
+        if (prevOnDraw != -1) {
+            long dif0 = time - t0;
+            long dif = time - prevOnDraw;
+            String txt = String.format("TOT TIME %d ms / %d FPS", dif, (1000+dif/2) / dif);
+            canvas.drawText(txt, 4, 20, Paints.FONT_OUTLINE);
+            canvas.drawText(txt, 4, 20, Paints.FONT);
+            txt = "Frame: " +dif0;
+            canvas.drawText(txt, 4, 40, Paints.FONT_OUTLINE);
+            canvas.drawText(txt, 4, 40, Paints.FONT);
+        }
+        prevOnDraw = time;
+
+//        drawStats(canvas);
     }
 
     List<Statistic> stats = new ArrayList<>();
@@ -278,11 +291,10 @@ public class Renderer extends View {
     }
 
     private void drawStats(Canvas canvas) {
-        Paint paint = new Paint();
-        paint.setColor(0xffffffff);
-        paint.setTextSize(20);
-        for (int k = 0; k < stats.size(); ++k)
-            canvas.drawText(stats.get(k).toString(), 0, k*20, paint);
+        for (int k = 0; k < stats.size(); ++k) {
+            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT_OUTLINE);
+            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT);
+        }
     }
 
     private double log2(double d) {
@@ -307,6 +319,9 @@ public class Renderer extends View {
     QuadMatches matches = new QuadMatches();
 
     private void drawPath(Canvas canvas) {
+        // TODO consider sub/add 3 to screen corners to account for stroke width 6
+        // TODO try arcs instead of lines
+
         // calculate utm coordinates for screen corners
         double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
         double utm0y = centerUtmY-pixelToUtm(getHeight()/2-1);
@@ -319,14 +334,10 @@ public class Renderer extends View {
         queryLevel = Math.min(10, Math.max(0, queryLevel));
         quadRoot.queryTree(queryLevel, (int) Math.floor(utm0x), (int) Math.floor(utm0y), (int) Math.ceil(utm1x), (int) Math.ceil(utm1y), points, matches);
 
-        log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
+//        log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
 
         if (matches.matchCount != 0) {
             matches.sort();
-
-            Paint paint = new Paint();
-            paint.setStrokeWidth(6);
-            paint.setStyle(Paint.Style.STROKE);
 
             Path[] paths = new Path[2];
             paths[0] = new Path();
@@ -335,7 +346,6 @@ public class Renderer extends View {
 
             int prevIdx = -1;
             QuadPoint p, p2 = null;
-            int idx2 = -1;
             float p2x = 0, p2y = 0;
             int p2Surf = 0;
 
@@ -365,8 +375,8 @@ public class Renderer extends View {
                         paths[pSurf].moveTo(p2x, p2y);
                 }
 
-                idx2 = Math.min(idx + stepSize, points.size() - 1);
-                p2 = points.get(idx2);
+                // draw line to the next point (which may or may not be on screen)
+                p2 = points.get(Math.min(idx + stepSize, points.size() - 1));
                 p2x = (float) utmToScreenX(p2.x);
                 p2y = (float) utmToScreenY(p2.y);
                 p2Surf = p.surface.ordinal();
@@ -374,34 +384,24 @@ public class Renderer extends View {
 
                 prevIdx = idx;
             }
-            paint.setColor(0xffff0000);
-            canvas.drawPath(paths[0], paint);
-            paint.setColor(0xffffff00);
-            canvas.drawPath(paths[1], paint);
+            canvas.drawPath(paths[0], Paints.PATH_MAJOR_ROAD);
+            canvas.drawPath(paths[1], Paints.PATH_MINOR_ROAD);
 
-            log("Draw path");
+//            log("Draw path");
         }
     }
 
     private void drawPointsOfInterest(Canvas canvas) {
-        Paint paint = new Paint();
-//        paint.setTypeface();
-        paint.setTextSize(20);
-        paint.setStrokeWidth(8);
-        paint.setColor(0xffffff00);
-
         for (int k = 0; k < pointsOfInterest.size(); ++k) {
             PointOfInterest poi = pointsOfInterest.get(k);
             double x = utmToScreenX(poi.utmX);
             double y = utmToScreenY(poi.utmY);
             if (x >= 0 && x < getWidth() && y >= 0 && y < getHeight()) {
-                canvas.drawPoint((float) x, (float) y, paint);
+                canvas.drawPoint((float) x, (float) y, Paints.POINT_OF_INTEREST);
 
                 if (zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
-                    String text = String.format("%s (%d/%d)", poi.name, k + 1, pointsOfInterest.size());
-                    paint.setColor(0xffffffff);
-                    canvas.drawText(text, (float) x + 5, (float) y, paint);
-                    paint.setColor(0xffffff00);
+                    canvas.drawText(poi.label, (float) x + 5, (float) y + 10, Paints.FONT_OUTLINE);
+                    canvas.drawText(poi.label, (float) x + 5, (float) y + 10, Paints.FONT);
                 }
             }
         }
