@@ -3,13 +3,23 @@ package com.max.drawing;
 import android.graphics.Paint;
 
 public class Paints {
-    public static final Paint FONT = pb().color(0xffffffff).textSize(20).get();
-    public static final Paint FONT_OUTLINE = pb().color(0xff000000).textSize(20).stroke(4).get();
+    public static final int FONT_SIZE_POI = 20;
+    public static final Paint FONT_POI = pb().color(0xffffffff).textSize(FONT_SIZE_POI).antialias().get();
+    public static final Paint FONT_OUTLINE_POI = pb().color(0xff000000).textSize(FONT_SIZE_POI).stroke(4).antialias().get();
 
-    public static final Paint POINT_OF_INTEREST = pb().color(0xffffff00).strokeWidth(8).get();
+    public static final int FONT_SIZE_SCALE = 22;
+    public static final Paint FONT_SCALE = pb().color(0xffffffff).textSize(FONT_SIZE_SCALE).antialias().get();
+    public static final Paint FONT_OUTLINE_SCALE = pb().color(0xff000000).textSize(FONT_SIZE_SCALE).stroke(4).antialias().get();
 
-    public static final Paint PATH_MAJOR_ROAD = pb().color(0xffff0000).stroke(6).get();
-    public static final Paint PATH_MINOR_ROAD = pb().color(0xffff8f00).stroke(6).get();
+    public static final int POINT_OF_INTEREST_SIZE = 12;
+
+    public static final Paint POINT_OF_INTEREST = pb().color(0xffffff00).strokeWidth(POINT_OF_INTEREST_SIZE - 4).antialias().get();
+    public static final Paint POINT_OF_INTEREST_OUTLINE = pb().color(0xff000000).strokeWidth(POINT_OF_INTEREST_SIZE).antialias().get();
+
+    public static final int PATH_WIDTH = 6;
+
+    public static final Paint PATH_MAJOR_ROAD = pb().color(0x6fff0000).stroke(PATH_WIDTH).antialias().get();
+    public static final Paint PATH_MINOR_ROAD = pb().color(0x6fff6f00).stroke(PATH_WIDTH).antialias().get();
 
     static PaintBuilder pb() { return new PaintBuilder(); }
 
@@ -20,6 +30,7 @@ public class Paints {
         PaintBuilder textSize(float textSize) { p.setTextSize(textSize); return this; }
         PaintBuilder stroke(float width) { p.setStyle(Paint.Style.STROKE); return strokeWidth(width); }
         PaintBuilder strokeWidth(float width) { p.setStrokeWidth(width); return this; }
+        PaintBuilder antialias() { p.setAntiAlias(true); return this; }
         Paint get() { return p; }
     }
 

@@ -7,10 +7,11 @@ public class TileRectangle {
 
     public TileRectangle(int x0, int y0, int x1, int y1, int level) {
         tileSize = 1<<(20-level);
-        tx0 = (1_200_000 + x0) / tileSize;
-        ty0 = (8_500_000 - y1) / tileSize;
-        tx1 = (1_200_000 + x1) / tileSize;
-        ty1 = (8_500_000 - y0) / tileSize;
+        // the ternaries below is needed to round negative as well as positive numbers down
+        tx0 = (1_200_000 + x0 - (x0 < -1_200_000 ? tileSize-1 : 0)) / tileSize;
+        ty0 = (8_500_000 - y1 - (y1 > 8_500_000 ? tileSize-1 : 0)) / tileSize;
+        tx1 = (1_200_000 + x1 - (x1 < -1_200_000 ? tileSize-1 : 0)) / tileSize;
+        ty1 = (8_500_000 - y0 - (y0 > 8_500_000 ? tileSize-1 : 0)) / tileSize;
     }
 
     @Override public String toString() {

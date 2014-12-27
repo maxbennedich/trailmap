@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
@@ -19,17 +20,13 @@ import android.view.View;
 import com.max.logic.Tile;
 import com.max.logic.TilePos;
 import com.max.logic.TileRectangle;
-import com.max.logic.XY;
-import com.max.logic.XYd;
 import com.max.main.R;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
-import com.max.route.RoadSurface;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -37,7 +34,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,7 +61,7 @@ public class Renderer extends View {
     /** Amount of "digital" zoom on top of integer tile level zoom, i.e. scaleFactor/2^zoomLevel. */
     private double scalingZoom = scaleFactor / (1<<zoomLevel);
 
-    private static final int ZOOM_LEVEL_SHOW_LABELS = 8;
+    private static final int ZOOM_LEVEL_SHOW_LABELS = 7;
 
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
@@ -76,6 +72,7 @@ public class Renderer extends View {
 //    private XYd centerUtm = new XYd(669_715, 6_583_611);
     private double centerUtmX = 712_650, centerUtmY = 6_370_272;
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
+    private float gpsBearing;
 
     private static final int ROUTE_PIXEL_OFFSET_X = -1;
     private static final int ROUTE_PIXEL_OFFSET_Y = -1;
@@ -109,12 +106,16 @@ public class Renderer extends View {
     private static final BitmapFactory.Options NO_SCALING = new BitmapFactory.Options();
     static {
         NO_SCALING.inScaled = false;
+        NO_SCALING.inMutable = true;
     }
 
-    Bitmap gpsIcon;
+    Bitmap gpsIcon, scale;
+    Rect scaleRect;
 
     public void loadBitmaps() {
         gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
+        scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
+        scaleRect = new Rect(0, 0, scale.getWidth(), scale.getHeight());
 
         inventoryTiles();
     }
@@ -151,31 +152,146 @@ public class Renderer extends View {
         if (tileSet != null && tileSet.contains(tp)) {
             String tileName = "tile_"+zoomLevel+"_"+tp.tx+"_"+tp.ty+".png";
             Log.d("AccuMap", "Loading " + tileName);
+            Bitmap map;
             try {
                 InputStream is = getContext().getAssets().open(tileName);
-                Bitmap map = BitmapFactory.decodeStream(is, null, NO_SCALING);
+                map = BitmapFactory.decodeStream(is, null, NO_SCALING);
                 is.close();
-                return new Tile(tp, map);
             } catch (IOException e) {
                 throw new IllegalStateException("Error loading asset "+tileName, e);
             }
+
+            Tile tile = new Tile(tp, map);
+            Canvas canvas = new Canvas(tile.map);
+
+            // dim tile
+            Paint p = new Paint();
+            p.setColor(Color.BLACK);
+            p.setAlpha(63);
+            p.setStrokeWidth(1);
+            canvas.drawRect(0, 0, getWidth(), getHeight(), p);
+
+            drawPath(canvas, tile);
+            drawPointsOfInterest(canvas, tile);
+            return tile;
         }
         return null;
     }
 
+    float utmToTilePixelX(int utmx, int utmx0, int tileSize) {
+        return (float)(utmx - utmx0)*256/tileSize;
+    }
+
+    float utmToTilePixelY(int utmy, int utmy0, int tileSize) {
+        return (float)(utmy0 + tileSize-1 - utmy)*256/tileSize;
+    }
+
+    private void drawPath(Canvas canvas, Tile tile) {
+        // TODO try arcs instead of lines
+
+        // calculate utm coordinates for screen corners
+        int tileSize = 1<<(20-tile.tp.zoomLevel);
+        int utx0 = tile.tp.tx * tileSize - 1_200_000;
+        int uty0 = 8_500_000 - tile.tp.ty * tileSize - tileSize; // TODO check the math
+
+        // find route points visible on tile by querying quad tree
+        matches.clear();
+        int pathWidthOffset = Paints.PATH_WIDTH * tileSize / 256;
+        int queryUtx0 = utx0 - pathWidthOffset/2;
+        int queryUty0 = uty0 - pathWidthOffset/2;
+        int queryLevel = (int)(16-log2(scaleFactor)*1.5);
+        queryLevel = Math.min(10, Math.max(0, queryLevel));
+        quadRoot.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSize+pathWidthOffset, queryUty0+tileSize+pathWidthOffset, points, matches);
+
+        if (matches.matchCount != 0) {
+            matches.sort();
+
+            Path[] paths = new Path[2];
+            paths[0] = new Path();
+            paths[1] = new Path();
+            int stepSize = 1 << queryLevel;
+
+            int prevIdx = -1;
+            QuadPoint p, p2 = null;
+            float p2x = 0, p2y = 0;
+            int p2Surf = 0;
+
+            for (int k = 0; k < matches.matchCount; ++k) {
+                int idx = matches.get(k);
+
+                if (prevIdx == -1 || idx - prevIdx > stepSize) {
+                    // just entered screen, draw partial on-screen segment
+                    p = points.get(idx);
+                    float px = utmToTilePixelX(p.x, utx0, tileSize);
+                    float py = utmToTilePixelY(p.y, uty0, tileSize);
+
+                    // the math below for idx=0 is to select the last point for the current query level
+                    QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
+                    float p0x = utmToTilePixelX(p0.x, utx0, tileSize);
+                    float p0y = utmToTilePixelY(p0.y, uty0, tileSize);
+                    paths[p0.surface.ordinal()].moveTo(p0x, p0y);
+                    paths[p0.surface.ordinal()].lineTo(px, py);
+
+                    // start next surface type segment
+                    paths[p.surface.ordinal()].moveTo(px, py);
+                } else {
+                    // same point as previous "next"; don't calculate again; move if surface changed
+                    p = p2;
+                    int pSurf = p2.surface.ordinal();
+                    if (pSurf != p2Surf)
+                        paths[pSurf].moveTo(p2x, p2y);
+                }
+
+                // draw line to the next point (which may or may not be on screen)
+                p2 = points.get(Math.min(idx + stepSize, points.size() - 1));
+                p2x = utmToTilePixelX(p2.x, utx0, tileSize);
+                p2y = utmToTilePixelY(p2.y, uty0, tileSize);
+                p2Surf = p.surface.ordinal();
+                paths[p2Surf].lineTo(p2x, p2y);
+
+                prevIdx = idx;
+            }
+            canvas.drawPath(paths[0], Paints.PATH_MAJOR_ROAD);
+            canvas.drawPath(paths[1], Paints.PATH_MINOR_ROAD);
+        }
+    }
+
+    private void drawPointsOfInterest(Canvas canvas, Tile tile) {
+        // calculate utm coordinates for screen corners
+        int tileSize = 1<<(20-tile.tp.zoomLevel);
+        int utx0 = tile.tp.tx * tileSize - 1_200_000;
+        int uty0 = 8_500_000 - tile.tp.ty * tileSize - tileSize; // TODO check the math
+
+        for (int k = 0; k < pointsOfInterest.size(); ++k) {
+            PointOfInterest poi = pointsOfInterest.get(k);
+            float x = utmToTilePixelX(poi.utmX, utx0, tileSize);
+            float y = utmToTilePixelY(poi.utmY, uty0, tileSize);
+            if (x >= -Paints.POINT_OF_INTEREST_SIZE/2 && x < tileSize+Paints.POINT_OF_INTEREST_SIZE/2 && y >= -Paints.POINT_OF_INTEREST_SIZE/2 && y < tileSize+Paints.POINT_OF_INTEREST_SIZE/2) {
+                canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST_OUTLINE);
+                canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST);
+            }
+
+            if (tile.tp.zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
+                float textWidth = Paints.FONT_OUTLINE_POI.measureText(poi.label);
+                float textHeight = Paints.FONT_OUTLINE_POI.getTextSize(); // TODO: constant
+                float tx = x+6, ty = y+6;
+                if (tx >= -textWidth && tx < tileSize && ty >= -textHeight && ty < tileSize) {
+                    canvas.drawText(poi.label, tx, ty, Paints.FONT_OUTLINE_POI);
+                    canvas.drawText(poi.label, tx, ty, Paints.FONT_POI);
+                }
+            }
+        }
+    }
+
     int pixelToUtm(double pixel) {
-        // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
     double utmToPixel(double utm) {
-        // resolution: 256px = 1024m (level 10) 2048m (level 9)
         return utm/(1<<(20-zoomLevel-8)) * scalingZoom; // 8 since tile is 256 pixels wide
     }
 
-    double utmToScreenX(int utmx) {
-        return getWidth()/2-1 + utmToPixel(utmx-centerUtmX);
-    }
+    double utmToScreenX(int utmx) { return getWidth()/2-1 + utmToPixel(utmx-centerUtmX); }
 
     double utmToScreenY(int utmy) {
         return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
@@ -194,21 +310,16 @@ public class Renderer extends View {
         gpsY = utmY;
     }
 
+    public void setGPSBearing(float bearing) {
+        gpsBearing = bearing;
+    }
+
     long prevOnDraw = -1;
 
     @Override
     synchronized public void onDraw(Canvas canvas) {
 //        startLog();
         long t0 = time();
-
-        // clear screen
-        Paint p = new Paint();
-        p.setColor(Color.BLACK);
-        p.setAlpha(255);
-        p.setStrokeWidth(1);
-        canvas.drawRect(0, 0, getWidth(), getHeight(), p);
-
-//        log("Clear screen");
 
         // calculate utm coordinates for screen corners
         double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
@@ -229,19 +340,14 @@ public class Renderer extends View {
                 double screenY = utmToScreenY(uty0);
 
                 Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
-//                if (tile != null) {
-                    Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                    copyImage(canvas, tileImg, screenX, screenY);
-//                }
+                Bitmap tileImg = tile == null ? emptyTile : tile.map;
+                copyImage(canvas, tileImg, screenX, screenY);
             }
         }
 
 //        log("Draw tiles");
 
-        drawPath(canvas);
-//        drawPointsOfInterest(canvas);
-//        drawCrosshair();
-
+        drawScaleMarker(canvas);
         drawGPSMarker(canvas);
 
 //        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
@@ -251,11 +357,11 @@ public class Renderer extends View {
             long dif0 = time - t0;
             long dif = time - prevOnDraw;
             String txt = String.format("TOT TIME %d ms / %d FPS", dif, (1000+dif/2) / dif);
-            canvas.drawText(txt, 4, 20, Paints.FONT_OUTLINE);
-            canvas.drawText(txt, 4, 20, Paints.FONT);
+            canvas.drawText(txt, 4, 20, Paints.FONT_OUTLINE_POI);
+            canvas.drawText(txt, 4, 20, Paints.FONT_POI);
             txt = "Frame: " +dif0;
-            canvas.drawText(txt, 4, 40, Paints.FONT_OUTLINE);
-            canvas.drawText(txt, 4, 40, Paints.FONT);
+            canvas.drawText(txt, 4, 40, Paints.FONT_OUTLINE_POI);
+            canvas.drawText(txt, 4, 40, Paints.FONT_POI);
         }
         prevOnDraw = time;
 
@@ -292,8 +398,8 @@ public class Renderer extends View {
 
     private void drawStats(Canvas canvas) {
         for (int k = 0; k < stats.size(); ++k) {
-            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT_OUTLINE);
-            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT);
+            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT_OUTLINE_POI);
+            canvas.drawText(stats.get(k).toString(), 4, k * 20 + 20, Paints.FONT_POI);
         }
     }
 
@@ -318,101 +424,46 @@ public class Renderer extends View {
 
     QuadMatches matches = new QuadMatches();
 
-    private void drawPath(Canvas canvas) {
-        // TODO consider sub/add 3 to screen corners to account for stroke width 6
-        // TODO try arcs instead of lines
+    /** in pixels */
+    private static final int SCALE_MARKER_WIDTH = 256;
 
-        // calculate utm coordinates for screen corners
-        double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
-        double utm0y = centerUtmY-pixelToUtm(getHeight()/2-1);
-        double utm1x = centerUtmX+pixelToUtm(getWidth()/2);
-        double utm1y = centerUtmY+pixelToUtm(getHeight()/2);
+    private void drawScaleMarker(Canvas canvas) {
+        int utmDist = pixelToUtm(SCALE_MARKER_WIDTH);
+        int mult = 1;
+        for (int u = utmDist/10; u != 0; u /= 10, mult *= 10) ;
+        float d = (float)utmDist / mult;
 
-        // find route points visible on screen by querying quad tree
-        matches.clear();
-        int queryLevel = (int)(16-log2(scaleFactor)*1.5);
-        queryLevel = Math.min(10, Math.max(0, queryLevel));
-        quadRoot.queryTree(queryLevel, (int) Math.floor(utm0x), (int) Math.floor(utm0y), (int) Math.ceil(utm1x), (int) Math.ceil(utm1y), points, matches);
+        // find a "nice" number for the scale
+        if (d <= 1.75) d = 1;
+        else if (d < 3.75) d = 2.5f;
+        else if (d < 7.5) d = 5;
+        else { d = 1; mult *= 10; }
+        int rounded = (int)(d * mult);
 
-//        log(String.format("Calculate path scale=%.0f, ql=%d, points=%d", scaleFactor, queryLevel, matches.matchCount));
+        double pixelLength = utmToPixel(rounded);
+        int scaledWidth = (int)(pixelLength * scale.getWidth() / SCALE_MARKER_WIDTH + 0.5);
 
-        if (matches.matchCount != 0) {
-            matches.sort();
+        Rect dstRect = new Rect(getWidth()-36-scaledWidth, getHeight()-29, getWidth()-36, getHeight()-29+scale.getHeight());
+        canvas.drawBitmap(scale, scaleRect, dstRect, null);
 
-            Path[] paths = new Path[2];
-            paths[0] = new Path();
-            paths[1] = new Path();
-            int stepSize = 1 << queryLevel;
+        String label = rounded >= 1000 ? (rounded == 2500 ? "2.5 km" : rounded / 1000 + " km") : rounded + " m";
+        float textWidth = Paints.FONT_OUTLINE_SCALE.measureText(label);
+        canvas.drawText(label, getWidth()-textWidth-8, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText(label, getWidth()-textWidth-8, getHeight()-36, Paints.FONT_SCALE);
 
-            int prevIdx = -1;
-            QuadPoint p, p2 = null;
-            float p2x = 0, p2y = 0;
-            int p2Surf = 0;
-
-            for (int k = 0; k < matches.matchCount; ++k) {
-                int idx = matches.get(k);
-
-                if (prevIdx == -1 || idx - prevIdx > stepSize) {
-                    // just entered screen, draw partial on-screen segment
-                    p = points.get(idx);
-                    float px = (float) utmToScreenX(p.x);
-                    float py = (float) utmToScreenY(p.y);
-
-                    // the math below for idx=0 is to select the last point for the current query level
-                    QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
-                    float p0x = (float) utmToScreenX(p0.x);
-                    float p0y = (float) utmToScreenY(p0.y);
-                    paths[p0.surface.ordinal()].moveTo(p0x, p0y);
-                    paths[p0.surface.ordinal()].lineTo(px, py);
-
-                    // start next surface type segment
-                    paths[p.surface.ordinal()].moveTo(px, py);
-                } else {
-                    // same point as previous "next"; don't calculate again; move if surface changed
-                    p = p2;
-                    int pSurf = p2.surface.ordinal();
-                    if (pSurf != p2Surf)
-                        paths[pSurf].moveTo(p2x, p2y);
-                }
-
-                // draw line to the next point (which may or may not be on screen)
-                p2 = points.get(Math.min(idx + stepSize, points.size() - 1));
-                p2x = (float) utmToScreenX(p2.x);
-                p2y = (float) utmToScreenY(p2.y);
-                p2Surf = p.surface.ordinal();
-                paths[p2Surf].lineTo(p2x, p2y);
-
-                prevIdx = idx;
-            }
-            canvas.drawPath(paths[0], Paints.PATH_MAJOR_ROAD);
-            canvas.drawPath(paths[1], Paints.PATH_MINOR_ROAD);
-
-//            log("Draw path");
-        }
+        canvas.drawText("0", getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText("0", getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_SCALE);
     }
 
-    private void drawPointsOfInterest(Canvas canvas) {
-        for (int k = 0; k < pointsOfInterest.size(); ++k) {
-            PointOfInterest poi = pointsOfInterest.get(k);
-            double x = utmToScreenX(poi.utmX);
-            double y = utmToScreenY(poi.utmY);
-            if (x >= 0 && x < getWidth() && y >= 0 && y < getHeight()) {
-                canvas.drawPoint((float) x, (float) y, Paints.POINT_OF_INTEREST);
-
-                if (zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
-                    canvas.drawText(poi.label, (float) x + 5, (float) y + 10, Paints.FONT_OUTLINE);
-                    canvas.drawText(poi.label, (float) x + 5, (float) y + 10, Paints.FONT);
-                }
-            }
-        }
-
-        log("Draw points of interest");
-    }
+    Matrix matrix = new Matrix(); // to not have to constantly reallocate
 
     private void drawGPSMarker(Canvas canvas) {
         double x = utmToScreenX((int)(gpsX+0.5));
         double y = utmToScreenY((int)(gpsY+0.5));
-        canvas.drawBitmap(gpsIcon, (int)(x-gpsIcon.getWidth()/2+0.5), (int)(y-gpsIcon.getHeight()/2+0.5), null);
+        matrix.reset();
+        matrix.postRotate(gpsBearing, gpsIcon.getWidth()/2, gpsIcon.getHeight()/2);
+        matrix.postTranslate((float)(x-gpsIcon.getWidth()/2), (float)(y-gpsIcon.getHeight()/2));
+        canvas.drawBitmap(gpsIcon, matrix, null);
     }
 
     private void copyImage(Canvas canvas, Bitmap src, double posX, double posY) {
@@ -518,16 +569,4 @@ public class Renderer extends View {
             return true;
         }
     }
-
-    //        Paint p = new Paint();
-//        // clear screen
-//        p.setColor(Color.BLACK);
-//        p.setAlpha(255);
-//        p.setStrokeWidth(1);
-//        canvas.drawRect(0, 0, getWidth(), getHeight(), p);
-//
-//        p.setColor(Color.CYAN);
-//        p.setAlpha(starAlpha+=starFade);
-//        p.setStrokeWidth(5);
-//        canvas.drawPoint(starField.get(i).x, starField.get(i).y, p);
 }

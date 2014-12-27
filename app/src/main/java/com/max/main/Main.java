@@ -59,8 +59,14 @@ public class Main extends Activity {
             List<PointOfInterest> poi = (List<PointOfInterest>)ois.readObject();
 
             // set labels
-            for (int k = 0; k < poi.size(); ++k)
-                poi.get(k).label = String.format("%s (%d/%d)", poi.get(k).name, k + 1, poi.size());
+            for (int k = 0; k < poi.size(); ++k) {
+                String name = poi.get(k).name;
+                if (name.endsWith(" kyrka"))
+                    name = name.substring(0, name.length()-" kyrka".length());
+                if (name.endsWith(" - domkyrkan"))
+                    name = name.substring(0, name.length()-" - domkyrkan".length());
+                poi.get(k).label = String.format("%s (%d/%d)", name, k + 1, poi.size());
+            }
 
             renderer.pointsOfInterest = poi;
             ois.close();
@@ -87,10 +93,12 @@ public class Main extends Activity {
 
     private void locationUpdated(Location location) {
         // TODO use nanos, not getTime
-        Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, accuracy=%.4f, time=%d",
-                location.getProvider(), location.getLatitude(), location.getLongitude(), location.getAccuracy(), location.getTime()));
+        Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f, accuracy=%.4f, time=%d",
+                location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.getAccuracy(), location.getTime()));
         XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
         renderer.setGPSCoordinate(xy.x, xy.y);
+        if (location.hasBearing())
+            renderer.setGPSBearing(location.getBearing());
         renderer.invalidate();
     }
 }
