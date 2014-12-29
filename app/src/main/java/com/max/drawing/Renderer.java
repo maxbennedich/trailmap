@@ -25,6 +25,7 @@ import com.max.route.QuadNode;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -108,12 +109,10 @@ public class Renderer extends View {
     }
 
     Bitmap gpsIcon, scale;
-    Rect scaleRect;
 
     public void loadBitmaps() {
         gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
         scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
-        scaleRect = new Rect(0, 0, scale.getWidth(), scale.getHeight());
 
         inventoryTiles();
     }
@@ -441,35 +440,54 @@ public class Renderer extends View {
     /** in pixels */
     private static final int SCALE_MARKER_WIDTH = 256;
 
+    /** Pre-generated labels for the scale marker (to avoid building strings while drawing). */
+    private static final String[] SCALE_LABELS = generateScaleLabels();
+
+    private static final String[] generateScaleLabels() {
+        List<String> labels = new ArrayList<>();
+        labels.add("0");
+
+        DecimalFormat formatter = new DecimalFormat("#.#");
+        double[] dist = {1, 2.5, 5};
+        for (int k = 0; ; ++k) {
+            int n = k%3, m = k/3;
+            double d = dist[n] * Math.pow(10, m);
+            if ((int)d > 1_000_000) break;
+            labels.add(formatter.format(m > 2 ? d/1000 : d) + (m > 2 ? " km" : " m"));
+        }
+        return labels.toArray(new String[labels.size()]);
+    }
+
     private void drawScaleMarker(Canvas canvas) {
         int utmDist = pixelToUtm(SCALE_MARKER_WIDTH);
-        int mult = 1;
-        for (int u = utmDist/10; u != 0; u /= 10, mult *= 10) ;
+        int mult = 1, exp = 0;
+        for (int u = utmDist/10; u != 0; u /= 10, mult *= 10, ++exp) ;
         float d = (float)utmDist / mult;
 
         // find a "nice" number for the scale
-        if (d <= 1.75) d = 1;
-        else if (d < 3.75) d = 2.5f;
-        else if (d < 7.5) d = 5;
-        else { d = 1; mult *= 10; }
+        int k;
+        if (d <= 1.75) { d = 1; k = 1; }
+        else if (d < 3.75) { d = 2.5f; k = 2; }
+        else if (d < 7.5) { d = 5; k = 3; }
+        else { d = 1; k = 1; mult *= 10; ++exp; }
         int rounded = (int)(d * mult);
 
         double pixelLength = utmToPixel(rounded);
         int scaledWidth = (int)(pixelLength * scale.getWidth() / SCALE_MARKER_WIDTH + 0.5);
 
         Rect dstRect = new Rect(getWidth()-36-scaledWidth, getHeight()-29, getWidth()-36, getHeight()-29+scale.getHeight());
-        canvas.drawBitmap(scale, scaleRect, dstRect, null);
+        canvas.drawBitmap(scale, null, dstRect, null);
 
-        String label = rounded >= 1000 ? (rounded == 2500 ? "2.5 km" : rounded / 1000 + " km") : rounded + " m";
-        float textWidth = Paints.FONT_OUTLINE_SCALE.measureText(label);
-        canvas.drawText(label, getWidth()-textWidth-8, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
-        canvas.drawText(label, getWidth()-textWidth-8, getHeight()-36, Paints.FONT_SCALE);
+        int labelIdx = k + exp*3;
+        float textWidth = Paints.FONT_OUTLINE_SCALE.measureText(SCALE_LABELS[labelIdx]);
+        canvas.drawText(SCALE_LABELS[labelIdx], getWidth()-textWidth-8, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText(SCALE_LABELS[labelIdx], getWidth()-textWidth-8, getHeight()-36, Paints.FONT_SCALE);
 
-        canvas.drawText("0", getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
-        canvas.drawText("0", getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_SCALE);
+        canvas.drawText(SCALE_LABELS[0], getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText(SCALE_LABELS[0], getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_SCALE);
     }
 
-    Matrix matrix = new Matrix(); // to not have to constantly reallocate
+    private Matrix matrix = new Matrix(); // to not have to constantly reallocate
 
     private void drawGPSMarker(Canvas canvas) {
         double x = utmToScreenX((int)(gpsX+0.5));
