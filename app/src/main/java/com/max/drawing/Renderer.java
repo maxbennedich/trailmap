@@ -484,9 +484,8 @@ public class Renderer extends View {
         int sw = src.getWidth(), sh = src.getHeight();
         double dw = sw * scalingZoom;
         double dh = sh * scalingZoom;
-        Rect srcRect = new Rect(0, 0, sw, sh);
         Rect dstRect = new Rect((int)(posX+0.5), (int)(posY+0.5), (int)(posX+dw+0.5), (int)(posY+dh+0.5));
-        canvas.drawBitmap(src, srcRect, dstRect, null);
+        canvas.drawBitmap(src, null, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
