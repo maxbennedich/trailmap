@@ -44,7 +44,7 @@ public class Renderer extends View {
 
     public List<PointOfInterest> pointsOfInterest;
 
-    private Bitmap emptyTile;
+    private Bitmap emptyTile, gpsIcon, scale;
 
     private LinkedHashMap<Integer, Tile> tileCache = getTileCache();
 
@@ -102,19 +102,28 @@ public class Renderer extends View {
         };
     }
 
-    private static final BitmapFactory.Options NO_SCALING = new BitmapFactory.Options();
-    static {
-        NO_SCALING.inScaled = false;
-        NO_SCALING.inMutable = true;
-    }
+    public Renderer(Context context, AttributeSet aSet) {
+        super(context, aSet);
 
-    Bitmap gpsIcon, scale;
+        zoomDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
 
-    public void loadBitmaps() {
-        gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
-        scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
+        loadBitmaps();
 
         inventoryTiles();
+
+        Log.d("AccuMap", "Initialized renderer");
+    }
+
+    private static final BitmapFactory.Options NO_SCALING = new BitmapFactory.Options();
+    static {
+        NO_SCALING.inScaled = false; // to keep original tile size
+        NO_SCALING.inMutable = true; // to enable drawing on top of loaded tiles
+    }
+
+    private void loadBitmaps() {
+        gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
+        scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
+        emptyTile = BitmapFactory.decodeResource(getResources(), R.drawable.empty, NO_SCALING);
     }
 
     /** Populate the structure of available tiles. */
@@ -512,16 +521,6 @@ public class Renderer extends View {
     private ScaleGestureDetector zoomDetector;
     private ActionMode actionMode = ActionMode.NONE;
     private double panStartX, panStartY;
-
-    public Renderer(Context context, AttributeSet aSet) {
-        super(context, aSet);
-
-        zoomDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
-
-        emptyTile = BitmapFactory.decodeResource(getResources(), R.drawable.empty, NO_SCALING);
-
-        Log.d("AccuMap", "Initialized tiles -- size "+emptyTile.getWidth()+","+emptyTile.getHeight());
-    }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {

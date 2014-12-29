@@ -33,8 +33,6 @@ public class Main extends Activity {
 
         loadRoute();
         loadPointsOfInterest();
-
-        renderer.loadBitmaps();
     }
 
     private Renderer renderer;
