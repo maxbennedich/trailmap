@@ -18,8 +18,6 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 
 import com.max.logic.Tile;
-import com.max.logic.TilePos;
-import com.max.logic.TileRectangle;
 import com.max.main.R;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
@@ -47,7 +45,7 @@ public class Renderer extends View {
 
     private Bitmap emptyTile;
 
-    private LinkedHashMap<TilePos, Tile> tileCache = getTileCache();
+    private LinkedHashMap<Integer, Tile> tileCache = getTileCache();
 
     private static final int MIN_ZOOM_LEVEL = 0;
     private static final int MAX_ZOOM_LEVEL = 10;
@@ -66,8 +64,8 @@ public class Renderer extends View {
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
 
-    /** Contains all tile positions/resource ids for which we have a tile (on disk), for each zoom level. */
-    private Map<Integer, Set<TilePos>> existingTilesByZoomLevel = new HashMap<>();
+    /** Contains all tile indices for which we have a tile on disk. */
+    private Set<Integer> existingTiles = new HashSet<>();
 
 //    private XYd centerUtm = new XYd(669_715, 6_583_611);
     private double centerUtmX = 712_650, centerUtmY = 6_370_272;
@@ -77,8 +75,8 @@ public class Renderer extends View {
     private static final int ROUTE_PIXEL_OFFSET_X = -1;
     private static final int ROUTE_PIXEL_OFFSET_Y = -1;
 
-    private LinkedHashMap<TilePos, Tile> getTileCache() {
-        return new LinkedHashMap<TilePos, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
+    private LinkedHashMap<Integer, Tile> getTileCache() {
+        return new LinkedHashMap<Integer, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
             private static final long serialVersionUID = 1L;
 
             /**
@@ -88,16 +86,16 @@ public class Renderer extends View {
              */
             @Override public Tile get(Object key) {
                 Tile tile = super.get(key);
-                if (tile != null || !(key instanceof TilePos))
+                if (tile != null)
                     return tile;
 
-                TilePos tp = (TilePos) key;
-                if ((tile = loadTile(zoomLevel, tp)) != null)
+                Integer tp = (Integer) key;
+                if ((tile = loadTile(tp)) != null)
                     put(tp, tile);
                 return tile;
             }
 
-            @Override protected boolean removeEldestEntry(Entry<TilePos, Tile> eldest) {
+            @Override protected boolean removeEldestEntry(Entry<Integer, Tile> eldest) {
                 return size() > TILE_CACHE_SIZE;
             }
         };
@@ -138,19 +136,28 @@ public class Renderer extends View {
                 int zoomLevel = Integer.valueOf(m.group(1));
                 int tx = Integer.valueOf(m.group(2));
                 int ty = Integer.valueOf(m.group(3));
-                Set<TilePos> tileSet = existingTilesByZoomLevel.get(zoomLevel);
-                if (tileSet == null)
-                    existingTilesByZoomLevel.put(zoomLevel, tileSet = new HashSet<TilePos>());
-                tileSet.add(new TilePos(zoomLevel, tx, ty));
+                existingTiles.add(getTilePos(zoomLevel, tx, ty));
             }
         }
     }
 
-    private Tile loadTile(int zoomLevel, TilePos tp) {
+    static final int getTilePos(int zoomLevel, int tx, int ty) {
+        // zoom: 4 bits (0-15)
+        // tx/ty: 14 bits (0-16383)
+        return (zoomLevel << 28) + (tx << 14) + ty;
+    }
+
+    static final int getZoomLevel(int tilePos) { return tilePos >>> 28; }
+    static final int getTX(int tilePos) { return (tilePos >> 14) & 0x3fff; }
+    static final int getTY(int tilePos) { return tilePos & 0x3fff; }
+
+    private Tile loadTile(Integer tp) {
         // see if tile exists
-        Set<TilePos> tileSet = existingTilesByZoomLevel.get(zoomLevel);
-        if (tileSet != null && tileSet.contains(tp)) {
-            String tileName = "tile_"+zoomLevel+"_"+tp.tx+"_"+tp.ty+".png";
+        if (existingTiles.contains(tp)) {
+            int zoom = getZoomLevel(tp);
+            int tx = getTX(tp), ty = getTY(tp);
+
+            String tileName = "tile_"+zoom+"_"+tx+"_"+ty+".png";
             Log.d("AccuMap", "Loading " + tileName);
             Bitmap map;
             try {
@@ -161,7 +168,7 @@ public class Renderer extends View {
                 throw new IllegalStateException("Error loading asset "+tileName, e);
             }
 
-            Tile tile = new Tile(tp, map);
+            Tile tile = new Tile(zoom, tx, ty, map);
             Canvas canvas = new Canvas(tile.map);
 
             // dim tile
@@ -190,9 +197,9 @@ public class Renderer extends View {
         // TODO try arcs instead of lines
 
         // calculate utm coordinates for screen corners
-        int tileSize = 1<<(20-tile.tp.zoomLevel);
-        int utx0 = tile.tp.tx * tileSize - 1_200_000;
-        int uty0 = 8_500_000 - tile.tp.ty * tileSize - tileSize; // TODO check the math
+        int tileSize = 1<<(20-tile.zoomLevel);
+        int utx0 = tile.tx * tileSize - 1_200_000;
+        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
 
         // find route points visible on tile by querying quad tree
         matches.clear();
@@ -258,9 +265,9 @@ public class Renderer extends View {
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
         // calculate utm coordinates for screen corners
-        int tileSize = 1<<(20-tile.tp.zoomLevel);
-        int utx0 = tile.tp.tx * tileSize - 1_200_000;
-        int uty0 = 8_500_000 - tile.tp.ty * tileSize - tileSize; // TODO check the math
+        int tileSize = 1<<(20-tile.zoomLevel);
+        int utx0 = tile.tx * tileSize - 1_200_000;
+        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
 
         for (int k = 0; k < pointsOfInterest.size(); ++k) {
             PointOfInterest poi = pointsOfInterest.get(k);
@@ -271,7 +278,7 @@ public class Renderer extends View {
                 canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST);
             }
 
-            if (tile.tp.zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
+            if (tile.zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {
                 float textWidth = Paints.FONT_OUTLINE_POI.measureText(poi.label);
                 float textHeight = Paints.FONT_OUTLINE_POI.getTextSize(); // TODO: constant
                 float tx = x+6, ty = y+6;
@@ -322,26 +329,33 @@ public class Renderer extends View {
         long t0 = time();
 
         // calculate utm coordinates for screen corners
-        double utm0x = centerUtmX-pixelToUtm(getWidth()/2-1);
-        double utm0y = centerUtmY-pixelToUtm(getHeight()/2-1);
-        double utm1x = centerUtmX+pixelToUtm(getWidth()/2);
-        double utm1y = centerUtmY+pixelToUtm(getHeight()/2);
+        int utm0x = (int)Math.floor(centerUtmX-pixelToUtm(getWidth()/2-1));
+        int utm0y = (int)Math.floor(centerUtmY-pixelToUtm(getHeight()/2-1));
+        int utm1x = (int)Math.ceil(centerUtmX+pixelToUtm(getWidth()/2));
+        int utm1y = (int)Math.ceil(centerUtmY+pixelToUtm(getHeight()/2));
 
-        TileRectangle tr = new TileRectangle((int)Math.floor(utm0x), (int)Math.floor(utm0y),
-                (int)Math.ceil(utm1x), (int)Math.ceil(utm1y), zoomLevel);
+        // convert utm coordinates to tile indices
+        int tileSizeUtm = 1<<(20-zoomLevel);
 
-        for (int ty = tr.ty0; ty <= tr.ty1; ++ty) {
-            for (int tx = tr.tx0; tx <= tr.tx1; ++tx) {
-                // translate tile back to utm coordinates, then to screen coordinates
-                int utx0 = tx * tr.tileSize - 1_200_000;
-                int uty0 = 8_500_000 - ty * tr.tileSize;
+        // the ternaries below are needed to round negative as well as positive numbers down
+        int tx0 = (1_200_000 + utm0x - (utm0x < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        int ty0 = (8_500_000 - utm1y - (utm1y > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        int tx1 = (1_200_000 + utm1x - (utm1x < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        int ty1 = (8_500_000 - utm0y - (utm0y > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
 
-                double screenX = utmToScreenX(utx0);
-                double screenY = utmToScreenY(uty0);
+        for (int ty = ty0; ty <= ty1; ++ty) {
+            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
+            double tileScreenY = utmToScreenY(tileUtmY);
 
-                Tile tile = tileCache.get(new TilePos(zoomLevel, tx, ty));
-                Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                copyImage(canvas, tileImg, screenX, screenY);
+            for (int tx = tx0; tx <= tx1; ++tx) {
+                int tileUtmX = tx * tileSizeUtm - 1_200_000;
+                double tileScreenX = utmToScreenX(tileUtmX);
+
+                Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
+                if (tile != null) {
+                    Bitmap tileImg = tile == null ? emptyTile : tile.map;
+                    copyImage(canvas, tileImg, tileScreenX, tileScreenY);
+                }
             }
         }
 
