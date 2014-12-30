@@ -8,7 +8,6 @@ import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 
 import android.content.Context;
-import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;

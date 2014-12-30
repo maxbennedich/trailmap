@@ -1,17 +1,12 @@
 package com.max.kml;
 
-import android.content.res.Resources;
-import android.content.res.XmlResourceParser;
-
 import com.max.latlng.LatLngHelper;
 import com.max.logic.XY;
-import com.max.logic.XYd;
 import com.max.route.PointOfInterest;
 import com.max.route.RoadSurface;
 import com.max.route.Route;
 import com.max.route.RouteSegment;
 
-import java.io.File;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
