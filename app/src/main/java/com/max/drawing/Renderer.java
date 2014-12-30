@@ -66,8 +66,8 @@ public class Renderer extends View {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-//    private XYd centerUtm = new XYd(669_715, 6_583_611);
-    private double centerUtmX = 712_650, centerUtmY = 6_370_272;
+    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
+//    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
 
@@ -317,19 +317,19 @@ public class Renderer extends View {
         gpsY = utmY;
 
         // mark point on tile
-        int utmIX = (int)(utmX + 0.5), utmIY = (int)(utmY + 0.5);
-        int tileSizeUtm = 1<<(20-zoomLevel);
-        int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-        int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-        Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
-        if (tile != null) {
-            Canvas canvas = new Canvas(tile.map);
-            int tileUtmX = tx * tileSizeUtm - 1_200_000;
-            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
-            float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
-            float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
-            canvas.drawPoint(tilePixelX, tilePixelY, Paints.VISITED);
-        }
+//        int utmIX = (int)(utmX + 0.5), utmIY = (int)(utmY + 0.5);
+//        int tileSizeUtm = 1<<(20-zoomLevel);
+//        int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+//        int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+//        Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
+//        if (tile != null) {
+//            Canvas canvas = new Canvas(tile.map);
+//            int tileUtmX = tx * tileSizeUtm - 1_200_000;
+//            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
+//            float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
+//            float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
+//            canvas.drawPoint(tilePixelX, tilePixelY, Paints.VISITED);
+//        }
     }
 
     public void setGPSBearing(float bearing) {
