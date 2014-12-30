@@ -28,7 +28,7 @@ public class Main extends Activity {
 
         renderer = ((Renderer)findViewById(R.id.the_canvas));
 
-        // start this as early as possibly to get the GPS going
+        // start this as early as possibly to get the GPS started
         initLocationService();
 
         loadRoute();

@@ -28,11 +28,9 @@ import java.io.InputStream;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,7 +53,7 @@ public class Renderer extends View {
     private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 3;
     private double scaleFactor = 70;
 
-    public int zoomLevel = (int)(Math.log(scaleFactor) / Math.log(2));
+    public int zoomLevel = (int)log2(scaleFactor);
 
     /** Amount of "digital" zoom on top of integer tile level zoom, i.e. scaleFactor/2^zoomLevel. */
     private double scalingZoom = scaleFactor / (1<<zoomLevel);
@@ -214,8 +212,8 @@ public class Renderer extends View {
         int pathWidthOffset = Paints.PATH_WIDTH * tileSize / 256;
         int queryUtx0 = utx0 - pathWidthOffset/2;
         int queryUty0 = uty0 - pathWidthOffset/2;
-        int queryLevel = (int)(16-log2(scaleFactor)*1.5);
-        queryLevel = Math.min(10, Math.max(0, queryLevel));
+        byte queryLevel = (byte)(16-log2(scaleFactor)*1.5);
+        queryLevel = (byte)Math.min(10, Math.max(0, queryLevel));
         quadRoot.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSize+pathWidthOffset, queryUty0+tileSize+pathWidthOffset, points, matches);
 
         if (matches.matchCount != 0) {
@@ -298,31 +296,40 @@ public class Renderer extends View {
         }
     }
 
-    int pixelToUtm(double pixel) {
+    final int pixelToUtm(double pixel) {
         return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
     }
 
-    double utmToPixel(double utm) {
+    final double utmToPixel(double utm) {
         return utm/(1<<(20-zoomLevel-8)) * scalingZoom; // 8 since tile is 256 pixels wide
     }
 
-    double utmToScreenX(int utmx) { return getWidth()/2-1 + utmToPixel(utmx-centerUtmX); }
+    final double utmToScreenX(int utmx) {
+        return getWidth()/2-1 + utmToPixel(utmx-centerUtmX);
+    }
 
-    double utmToScreenY(int utmy) {
+    final double utmToScreenY(int utmy) {
         return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
-    }
-
-    double screenToUtmX(double pixelX) {
-        return centerUtmX + pixelToUtm(getWidth()/2-1 - pixelX);
-    }
-
-    double screenToUtmY(double pixelY) {
-        return centerUtmY - pixelToUtm(getHeight()/2-1 - pixelY); // y off by one?
     }
 
     public void setGPSCoordinate(double utmX, double utmY) {
         gpsX = utmX;
         gpsY = utmY;
+
+        // mark point on tile
+        int utmIX = (int)(utmX + 0.5), utmIY = (int)(utmY + 0.5);
+        int tileSizeUtm = 1<<(20-zoomLevel);
+        int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
+        if (tile != null) {
+            Canvas canvas = new Canvas(tile.map);
+            int tileUtmX = tx * tileSizeUtm - 1_200_000;
+            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
+            float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
+            float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
+            canvas.drawPoint(tilePixelX, tilePixelY, Paints.VISITED);
+        }
     }
 
     public void setGPSBearing(float bearing) {
@@ -425,7 +432,7 @@ public class Renderer extends View {
         }
     }
 
-    private double log2(double d) {
+    private static double log2(double d) {
         return Math.log(d)/Math.log(2);
     }
 
@@ -574,25 +581,14 @@ public class Renderer extends View {
             zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
             scalingZoom = scaleFactor / (1 << zoomLevel);
 
-            // TODO optimize the below
+            // translate due to focus point moving and zoom due to pinch
+            double focusX = detector.getFocusX(), focusY = detector.getFocusY();
+            double omScale = 1 - scaleFactor / oldScaleFactor;
+            centerUtmX += pixelToUtm((getWidth()/2-1 - focusX) * omScale - focusX + prevFocusX);
+            centerUtmY -= pixelToUtm((getHeight()/2-1 - focusY) * omScale - focusY + prevFocusY);
 
-            // translate due to focus point moving
-            double focusDiffX = detector.getFocusX() - prevFocusX;
-            double focusDiffY = detector.getFocusY() - prevFocusY;
-            if (focusDiffX != 0 || focusDiffY != 0) {
-                centerUtmX -= pixelToUtm(focusDiffX);
-                centerUtmY += pixelToUtm(focusDiffY);
-            }
-
-            // now zoom
-            double actualScale = scaleFactor / oldScaleFactor;
-            double px = screenToUtmX(detector.getFocusX());
-            double py = screenToUtmY(detector.getFocusY());
-            centerUtmX = px-((px-centerUtmX)*actualScale);
-            centerUtmY = py-((py-centerUtmY)*actualScale);
-
-            prevFocusX = detector.getFocusX();
-            prevFocusY = detector.getFocusY();
+            prevFocusX = focusX;
+            prevFocusY = focusY;
 
             invalidate();
 
