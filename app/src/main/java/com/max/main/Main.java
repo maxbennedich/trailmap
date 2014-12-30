@@ -15,27 +15,140 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.app.Activity;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.BaseAdapter;
+import android.widget.ListView;
+import android.widget.SeekBar;
+import android.widget.Switch;
+import android.widget.TextView;
 
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
 public class Main extends Activity {
-    private static final boolean USE_MOCK_LOCATION_SERVICE = true;
+
+    private ListView drawerList;
+
+    public static SeekBar globalSeekBar;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        renderer = ((Renderer)findViewById(R.id.the_canvas));
+//        renderer = ((Renderer)findViewById(R.id.content_frame));
 
-        // start this as early as possibly to get the GPS started
-        initLocationService();
+        // start the location service as early as possibly to get the GPS going
+//        initLocationService();
 
-        loadRoute();
-        loadPointsOfInterest();
+        List<ConfigItem> configItems = Arrays.asList(
+                new ConfigItem("Use GPS"),
+                new ConfigItem("Trace GPS"),
+                new ConfigItem("Show path"),
+                new ConfigItem("Points of interest"),
+                new ConfigItem("Cache size", true),
+                new ConfigItem("Show stats"),
+                new ConfigItem("Dim map"));
+
+//        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
+        drawerList = (ListView) findViewById(R.id.left_drawer);
+        drawerList.setAdapter(new ConfigListAdapter(getApplicationContext(), configItems));
+
+//        loadRoute();
+//        loadPointsOfInterest();
+    }
+
+    public class ConfigItem {
+        final String title;
+        final boolean seekBar;
+
+        boolean selected = false;
+
+        public ConfigItem(String title) {
+            this(title, false);
+        }
+        public ConfigItem(String title, boolean seekBar) {
+            this.title = title;
+            this.seekBar = seekBar;
+        }
+    }
+
+    public class ConfigListAdapter extends BaseAdapter {
+        private Context context;
+        private List<ConfigItem> configItems;
+
+        public ConfigListAdapter(Context context, List<ConfigItem> configItems){
+            this.context = context;
+            this.configItems = configItems;
+        }
+
+        @Override
+        public int getCount() {
+            return configItems.size();
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return configItems.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                LayoutInflater inflater = (LayoutInflater) context.getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
+                convertView = inflater.inflate(R.layout.config_item, null);
+            }
+
+            final ConfigItem item = configItems.get(position);
+
+            TextView title = (TextView) convertView.findViewById(R.id.title);
+            title.setText(item.title);
+
+            Switch switchButton = (Switch) convertView.findViewById(R.id.switchButton);
+            if (item.seekBar) {
+                switchButton.setVisibility(View.GONE);
+            } else {
+                switchButton.setSelected(item.selected);
+                switchButton.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        item.selected = !item.selected;
+//                        drawerList.setItemChecked(position, selected[position]);
+//                        drawerLayout.closeDrawer(drawerList);
+                    }
+                });
+            }
+
+            final TextView seekText = (TextView) convertView.findViewById(R.id.seektext);
+            SeekBar seekBar = (SeekBar) convertView.findViewById(R.id.seekbar);
+            if (!item.seekBar) {
+                seekBar.setVisibility(View.GONE);
+                seekText.setVisibility(View.GONE);
+            } else {
+                globalSeekBar = seekBar;
+                seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                    @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                        seekText.setText(Integer.toString(progress));
+                    }
+                    @Override public void onStartTrackingTouch(SeekBar seekBar) { }
+                    @Override public void onStopTrackingTouch(SeekBar seekBar) { }
+                });
+                switchButton.setVisibility(View.GONE);
+            }
+
+            return convertView;
+        }
+
     }
 
     private Renderer renderer;
@@ -124,7 +237,7 @@ public class Main extends Activity {
     private Handler handler = new Handler();
 
     private void initLocationService() {
-        if (USE_MOCK_LOCATION_SERVICE) {
+        if (Config.USE_MOCK_LOCATION_SERVICE) {
             handler.postDelayed(new Runnable() {
                 @Override public void run() {
                     handler.postDelayed(mockLocationService, MOCK_LOCATION_UPDATE_INTERVAL_MS);
@@ -134,6 +247,6 @@ public class Main extends Activity {
             LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
         }
-        Log.d("AccuMap", (USE_MOCK_LOCATION_SERVICE ? "Mock" : "GPS") + " location service initialized");
+        Log.d("AccuMap", (Config.USE_MOCK_LOCATION_SERVICE ? "Mock" : "GPS") + " location service initialized");
     }
 }

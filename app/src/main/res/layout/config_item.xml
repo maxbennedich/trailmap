@@ -1,0 +1,36 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="28dp">
+    <TextView android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_centerVertical="true"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp"
+        android:textColor="#fff"/>
+    <Switch android:id="@+id/switchButton"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"
+        android:switchTextAppearance="?android:attr/textAppearanceSmall"/>
+    <SeekBar
+        android:id="@+id/seekbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_toRightOf="@id/title"
+        android:layout_centerVertical="true"
+        android:paddingRight="40dp"
+        android:max="100"
+        android:progress="0"
+        android:secondaryProgress="0" />
+    <TextView android:id="@+id/seektext"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"
+        android:paddingRight="8dp"
+        android:textSize="12sp"
+        android:textColor="#999"
+        android:text="0"/>
+</RelativeLayout>

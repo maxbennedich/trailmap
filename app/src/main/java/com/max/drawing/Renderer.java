@@ -18,6 +18,7 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 
 import com.max.logic.Tile;
+import com.max.main.Config;
 import com.max.main.R;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
@@ -70,9 +71,6 @@ public class Renderer extends View {
 //    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
-
-    private static final int ROUTE_PIXEL_OFFSET_X = -1;
-    private static final int ROUTE_PIXEL_OFFSET_Y = -1;
 
     private LinkedHashMap<Integer, Tile> getTileCache() {
         return new LinkedHashMap<Integer, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
@@ -184,14 +182,18 @@ public class Renderer extends View {
             p.setStrokeWidth(1);
             canvas.drawRect(0, 0, getWidth(), getHeight(), p);
 
-            drawPath(canvas, tile);
-            drawPointsOfInterest(canvas, tile);
+            if (Config.SHOW_PATH)
+                drawPath(canvas, tile);
+            if (Config.SHOW_GPS_TRACE)
+                drawHistory(canvas, tile);
+            if (Config.SHOW_POINTS_OF_INTEREST)
+                drawPointsOfInterest(canvas, tile);
             return tile;
         }
         return null;
     }
 
-    float utmToTilePixelX(int utmx, int utmx0, int tileSize) {
+    final float utmToTilePixelX(int utmx, int utmx0, int tileSize) {
         return (float)(utmx - utmx0)*256/tileSize;
     }
 
@@ -199,10 +201,12 @@ public class Renderer extends View {
         return (float)(utmy0 + tileSize-1 - utmy)*256/tileSize;
     }
 
+    QuadMatches matches = new QuadMatches();
+
     private void drawPath(Canvas canvas, Tile tile) {
         // TODO try arcs instead of lines
 
-        // calculate utm coordinates for screen corners
+        // calculate utm coordinates for tile corners
         int tileSize = 1<<(20-tile.zoomLevel);
         int utx0 = tile.tx * tileSize - 1_200_000;
         int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
@@ -269,8 +273,24 @@ public class Renderer extends View {
         }
     }
 
+    private void drawHistory(Canvas canvas, Tile tile) {
+        // calculate utm coordinates for tile corners
+        int tileSize = 1<<(20-tile.zoomLevel);
+        int utx0 = tile.tx * tileSize - 1_200_000;
+        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
+
+        // TODO insert into quad tree
+        for (int k = 0; k < historyIdx; ++k) {
+            float x = utmToTilePixelX(historyUtmX[k], utx0, tileSize);
+            float y = utmToTilePixelY(historyUtmY[k], uty0, tileSize);
+            if (x >= -Paints.HISTORY_WIDTH/2 && x < tileSize+Paints.HISTORY_WIDTH/2 && y >= -Paints.HISTORY_WIDTH/2 && y < tileSize+Paints.HISTORY_WIDTH/2) {
+                canvas.drawPoint(x, y, Paints.HISTORY_PATH);
+            }
+        }
+    }
+
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
-        // calculate utm coordinates for screen corners
+        // calculate utm coordinates for tile corners
         int tileSize = 1<<(20-tile.zoomLevel);
         int utx0 = tile.tx * tileSize - 1_200_000;
         int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
@@ -305,31 +325,43 @@ public class Renderer extends View {
     }
 
     final double utmToScreenX(int utmx) {
-        return getWidth()/2-1 + utmToPixel(utmx-centerUtmX);
+        return getWidth()/2-1 + utmToPixel(utmx - centerUtmX);
     }
 
     final double utmToScreenY(int utmy) {
         return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
     }
 
+    private static final int MAX_HISTORY_POINTS = 1000;
+    private int[] historyUtmX = new int[MAX_HISTORY_POINTS];
+    private int[] historyUtmY = new int[MAX_HISTORY_POINTS];
+    private int historyIdx = 0;
+
     public void setGPSCoordinate(double utmX, double utmY) {
         gpsX = utmX;
         gpsY = utmY;
 
-        // mark point on tile
-//        int utmIX = (int)(utmX + 0.5), utmIY = (int)(utmY + 0.5);
-//        int tileSizeUtm = 1<<(20-zoomLevel);
-//        int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-//        int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-//        Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
-//        if (tile != null) {
-//            Canvas canvas = new Canvas(tile.map);
-//            int tileUtmX = tx * tileSizeUtm - 1_200_000;
-//            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
-//            float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
-//            float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
-//            canvas.drawPoint(tilePixelX, tilePixelY, Paints.VISITED);
-//        }
+        if (Config.SHOW_GPS_TRACE) {
+            int utmIX = historyUtmX[historyIdx] = (int) (utmX + 0.5);
+            int utmIY = historyUtmY[historyIdx] = (int) (utmY + 0.5);
+            ++historyIdx;
+
+            // mark point on tile
+            int tileSizeUtm = 1<<(20-zoomLevel);
+            int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+            int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+            Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
+            if (tile != null) {
+                int tileUtmX = tx * tileSizeUtm - 1_200_000;
+                int tileUtmY = 8_500_000 - ty * tileSizeUtm;
+                float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
+                float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
+
+                Canvas canvas = new Canvas(tile.map);
+                canvas.drawPoint(tilePixelX, tilePixelY, Paints.HISTORY_PATH);
+                Log.d("AccuMap", "Setting tile pixel "+tilePixelX+","+tilePixelY+" for tile "+tx+","+ty);
+            }
+        }
     }
 
     public void setGPSBearing(float bearing) {
@@ -450,8 +482,6 @@ public class Renderer extends View {
         }
         public void sort() { Arrays.sort(matchIdx, 0, matchCount); }
     }
-
-    QuadMatches matches = new QuadMatches();
 
     /** in pixels */
     private static final int SCALE_MARKER_WIDTH = 256;

@@ -21,7 +21,9 @@ public class Paints {
     public static final Paint PATH_MAJOR_ROAD = pb().color(0x6fff0000).stroke(PATH_WIDTH).antialias().get();
     public static final Paint PATH_MINOR_ROAD = pb().color(0x6fff6f00).stroke(PATH_WIDTH).antialias().get();
 
-    public static final Paint VISITED = pb().color(0xff0000ff).stroke(10).antialias().get();
+    public static final int HISTORY_WIDTH = 6;
+
+    public static final Paint HISTORY_PATH = pb().color(0xff0000ff).stroke(HISTORY_WIDTH).antialias().get();
 
     static PaintBuilder pb() { return new PaintBuilder(); }
 
