@@ -13,9 +13,9 @@ import java.util.List;
 
 public class ConfigListAdapter extends BaseAdapter {
     private Context context;
-    private List<ConfigItem> configItems;
+    private List<ConfigItem<?>> configItems;
 
-    public ConfigListAdapter(Context context, List<ConfigItem> configItems){
+    public ConfigListAdapter(Context context, List<ConfigItem<?>> configItems){
         this.context = context;
         this.configItems = configItems;
     }

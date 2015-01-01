@@ -5,13 +5,14 @@ import android.widget.TextView;
 
 import com.max.main.R;
 
-public abstract class ConfigItem {
-    final private Config config;
+public abstract class ConfigItem<V> {
     final protected String title;
 
-    public ConfigItem(String title, Config config) {
+    protected OptionValue<V> value;
+
+    public ConfigItem(String title, OptionValue<V> value) {
         this.title = title;
-        this.config = config;
+        this.value = value;
     }
 
     public void buildView(View view) {
@@ -19,9 +20,7 @@ public abstract class ConfigItem {
         titleView.setText(title);
     }
 
-    protected Config getConfig() {
-        return config;
-    }
+    abstract protected int getResource();
 
-    protected abstract int getResource();
+    abstract protected void select(V selected);
 }

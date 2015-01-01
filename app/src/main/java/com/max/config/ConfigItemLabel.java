@@ -10,7 +10,7 @@ import android.widget.TextView;
 
 import com.max.main.R;
 
-public class ConfigItemLabel extends ConfigItem {
+public class ConfigItemLabel extends ConfigItem<Void> {
     public ConfigItemLabel(String title) {
         super(title, null);
     }
@@ -29,4 +29,6 @@ public class ConfigItemLabel extends ConfigItem {
     @Override protected int getResource() {
         return R.layout.config_divider;
     }
+
+    @Override protected void select(Void selected) { }
 }

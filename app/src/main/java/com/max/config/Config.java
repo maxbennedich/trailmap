@@ -4,5 +4,6 @@ public class Config {
     public boolean showGpsTrace = true;
     public boolean showRoute = false;
     public boolean showPointsOfInterest = false;
-    public boolean gpsEnabled = true;
+    public OptionValue<Boolean> gpsEnabled = new OptionValue<>(false);
+    public OptionValue<Boolean> mockLocationService = new OptionValue<>(true);
 }

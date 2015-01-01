@@ -5,15 +5,11 @@ import com.max.config.ConfigItem;
 import com.max.config.ConfigItemLabel;
 import com.max.config.ConfigItemSwitch;
 import com.max.config.ConfigListAdapter;
-import com.max.config.items.CacheSizeSeekBar;
-import com.max.config.items.GpsEnabledSwitch;
-import com.max.config.items.GpsTraceLayerSwitch;
-import com.max.config.items.MapBrightnessSeekBar;
-import com.max.config.items.PointsOfInterestLayerSwitch;
-import com.max.config.items.RouteLayerSwitch;
 import com.max.drawing.Renderer;
 import com.max.latlng.LatLngHelper;
 import com.max.location.GpsLocationService;
+import com.max.location.LocationListenerWithPreviousLocation;
+import com.max.location.LocationServiceController;
 import com.max.location.MockLocationService;
 import com.max.logic.XYd;
 import com.max.route.PointOfInterest;
@@ -21,14 +17,9 @@ import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 
 import android.content.Context;
-import android.content.Intent;
 import android.location.Location;
-import android.location.LocationListener;
 import android.location.LocationManager;
-import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.provider.Settings;
 import android.util.Log;
 import android.app.Activity;
 import android.widget.ListView;
@@ -38,9 +29,8 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
-public class Main extends Activity {
+public class Controller extends Activity {
 
     private ListView drawerList;
 
@@ -48,8 +38,7 @@ public class Main extends Activity {
 
     private Config config;
 
-    private MockLocationService mockLocationService;
-    private GpsLocationService gpsLocationService;
+    private LocationServiceController locationServiceController;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -62,43 +51,44 @@ public class Main extends Activity {
         renderer.config = config;
 
         // start the location service as early as possible to get the GPS going
-        initLocationService();
+        locationServiceController = new LocationServiceController(
+                (LocationManager) getSystemService(Context.LOCATION_SERVICE),
+                locationListener,
+                config);
 
-        List<ConfigItem> configItems = Arrays.asList(
-                new ConfigItemLabel("General"),
-                new ConfigItemSwitch("Use GPS", config) {
-                    @Override protected boolean getSelection() {
-                        return getConfig().gpsEnabled;
-                    }
-
-                    @Override protected void setSelection(boolean selected) {
-                        getConfig().gpsEnabled = selected;
-                        if (selected) {
-                            mockLocationService.stop();
-                            gpsLocationService.start();
-                        } else {
-                            gpsLocationService.stop();
-                            mockLocationService.start();
-                        }
-                    }
-                },
-                new ConfigItemLabel("Map view"),
-                new MapBrightnessSeekBar("Brightness", config),
-                new CacheSizeSeekBar("Cache Size", config),
-                new ConfigItemLabel("Layers"),
-                new RouteLayerSwitch("Route", config),
-                new PointsOfInterestLayerSwitch("Points of Interest", config),
-                new GpsTraceLayerSwitch("GPS Trace", config));
-
-//        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
-        drawerList = (ListView) findViewById(R.id.left_drawer);
-        drawerList.setAdapter(new ConfigListAdapter(getApplicationContext(), configItems));
+        createMenu();
 
 //        loadRoute();
 //        loadPointsOfInterest();
     }
 
     private Renderer renderer;
+
+    private void createMenu() {
+        List<ConfigItem<?>> configItems = Arrays.asList(
+                new ConfigItemLabel("General"),
+                new ConfigItemSwitch("Use GPS", config.gpsEnabled) {
+                    @Override protected void select(Boolean selected) {
+                        locationServiceController.enableGps(selected);
+                    }
+                },
+                new ConfigItemSwitch("Simulate movement", config.mockLocationService) {
+                    @Override protected void select(Boolean selected) {
+                        locationServiceController.enableMock(selected);
+                    }
+                },
+                new ConfigItemLabel("Map view"));
+//                new MapBrightnessSeekBar("Brightness", config),
+//                new CacheSizeSeekBar("Cache Size", config),
+//                new ConfigItemLabel("Layers"),
+//                new RouteLayerSwitch("Route", config),
+//                new PointsOfInterestLayerSwitch("Points of Interest", config),
+//                new GpsTraceLayerSwitch("GPS Trace", config));
+
+//        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
+        drawerList = (ListView) findViewById(R.id.left_drawer);
+        drawerList.setAdapter(new ConfigListAdapter(getApplicationContext(), configItems));
+    }
 
     private void loadRoute() {
         InputStream is = getResources().openRawResource(R.raw.route);
@@ -137,8 +127,10 @@ public class Main extends Activity {
         }
     }
 
-    private final LocationListener locationListener = new LocationListener() {
-        public void onLocationChanged(Location location) {
+    private final LocationListenerWithPreviousLocation locationListener = new LocationListenerWithPreviousLocation() {
+        @Override public void onLocationChanged(Location location) {
+            super.onLocationChanged(location);
+
             // TODO use nanos, not getTime
             Log.d("OptiMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
                     location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.hasBearing(), location.getAccuracy(), location.getTime()));
@@ -148,20 +140,5 @@ public class Main extends Activity {
                 renderer.setGPSBearing(location.getBearing());
             renderer.invalidate();
         }
-        public void onStatusChanged(String provider, int status, Bundle extras) { }
-        public void onProviderEnabled(String provider) { }
-        public void onProviderDisabled(String provider) { }
     };
-
-    private void initLocationService() {
-        mockLocationService = new MockLocationService(locationListener);
-        gpsLocationService = new GpsLocationService((LocationManager) getSystemService(Context.LOCATION_SERVICE), locationListener);
-
-        if (!config.gpsEnabled) {
-            mockLocationService.start();
-        } else {
-            gpsLocationService.start();
-        }
-        Log.d("OptiMap", (config.gpsEnabled ? "GPS" : "Mock") + " location service initialized");
-    }
 }

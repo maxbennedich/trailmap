@@ -1,14 +1,12 @@
 package com.max.config;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.support.v4.widget.DrawerLayout;
 import android.util.AttributeSet;
-import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.view.View;
 
-import com.max.main.Main;
+import com.max.main.Controller;
 import com.max.main.R;
 
 public class CustomInterceptDrawerLayout extends DrawerLayout {
@@ -25,14 +23,14 @@ public class CustomInterceptDrawerLayout extends DrawerLayout {
                 return false;
 
             // don't affect navigation drawer when using the seek bars
-            if (Main.globalSeekBar != null) {
+            if (Controller.globalSeekBar != null) {
                 int[] location = new int[2];
-                Main.globalSeekBar.getLocationInWindow(location);
+                Controller.globalSeekBar.getLocationInWindow(location);
                 int seekX0, seekY0, seekX1, seekY1;
                 seekX0 = location[0];
-                seekY0 = location[1] - Main.globalSeekBar.getHeight() / 2;
-                seekX1 = seekX0 + Main.globalSeekBar.getWidth();
-                seekY1 = seekY0 + Main.globalSeekBar.getHeight();
+                seekY0 = location[1] - Controller.globalSeekBar.getHeight() / 2;
+                seekX1 = seekX0 + Controller.globalSeekBar.getWidth();
+                seekY1 = seekY0 + Controller.globalSeekBar.getHeight();
                 if (event.getX() >= seekX0 && event.getX() < seekX1 && event.getY() >= seekY0 && event.getY() < seekY1)
                     return false;
             }

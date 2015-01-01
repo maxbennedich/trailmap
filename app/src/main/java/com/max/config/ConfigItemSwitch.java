@@ -1,17 +1,13 @@
 package com.max.config;
 
-import android.content.DialogInterface;
 import android.view.View;
-import android.widget.SeekBar;
 import android.widget.Switch;
-import android.widget.TextView;
 
-import com.max.main.Main;
 import com.max.main.R;
 
-public abstract class ConfigItemSwitch extends ConfigItem implements View.OnClickListener {
-    public ConfigItemSwitch(String title, Config config) {
-        super(title, config);
+public abstract class ConfigItemSwitch extends ConfigItem<Boolean> implements View.OnClickListener {
+    public ConfigItemSwitch(String title, OptionValue<Boolean> value) {
+        super(title, value);
     }
 
     @Override public void buildView(View view) {
@@ -19,12 +15,13 @@ public abstract class ConfigItemSwitch extends ConfigItem implements View.OnClic
 
         Switch switchButton = (Switch) view.findViewById(R.id.switchButton);
 
-        switchButton.setChecked(getSelection());
+        switchButton.setChecked(value.value);
         switchButton.setOnClickListener(this);
     }
 
     @Override public void onClick(View v) {
-        setSelection(!getSelection());
+        value.value = !value.value;
+        select(value.value);
 //                        drawerList.setItemChecked(position, selected[position]);
 //                        drawerLayout.closeDrawer(drawerList);
     }
@@ -32,7 +29,4 @@ public abstract class ConfigItemSwitch extends ConfigItem implements View.OnClic
     @Override protected int getResource() {
         return R.layout.config_switch;
     }
-
-    abstract protected boolean getSelection();
-    abstract protected void setSelection(boolean selected);
 }
