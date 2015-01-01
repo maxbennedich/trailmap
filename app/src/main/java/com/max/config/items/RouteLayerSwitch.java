@@ -4,8 +4,8 @@ import com.max.config.Config;
 import com.max.config.ConfigItemSwitch;
 
 public class RouteLayerSwitch extends ConfigItemSwitch {
-    public RouteLayerSwitch(Config config) {
-        super(config, "Route");
+    public RouteLayerSwitch(String title, Config config) {
+        super(title, config);
     }
 
     @Override

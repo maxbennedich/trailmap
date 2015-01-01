@@ -4,8 +4,8 @@ import com.max.config.Config;
 import com.max.config.ConfigItemSwitch;
 
 public class PointsOfInterestLayerSwitch extends ConfigItemSwitch {
-    public PointsOfInterestLayerSwitch(Config config) {
-        super(config, "Points of Interest");
+    public PointsOfInterestLayerSwitch(String title, Config config) {
+        super(title, config);
     }
 
     @Override

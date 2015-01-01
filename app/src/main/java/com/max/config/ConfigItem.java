@@ -9,9 +9,9 @@ public abstract class ConfigItem {
     final private Config config;
     final protected String title;
 
-    public ConfigItem(Config config, String title) {
-       this.config = config;
+    public ConfigItem(String title, Config config) {
         this.title = title;
+        this.config = config;
     }
 
     public void buildView(View view) {

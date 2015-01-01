@@ -12,7 +12,7 @@ import com.max.main.R;
 
 public class ConfigItemLabel extends ConfigItem {
     public ConfigItemLabel(String title) {
-        super(null, title);
+        super(title, null);
     }
 
     @Override public void buildView(View view) {

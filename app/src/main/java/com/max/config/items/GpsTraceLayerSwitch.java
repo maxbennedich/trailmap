@@ -4,8 +4,8 @@ import com.max.config.Config;
 import com.max.config.ConfigItemSwitch;
 
 public class GpsTraceLayerSwitch extends ConfigItemSwitch {
-    public GpsTraceLayerSwitch(Config config) {
-        super(config, "GPS Trace");
+    public GpsTraceLayerSwitch(String title, Config config) {
+        super(title, config);
     }
 
     @Override

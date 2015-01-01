@@ -3,8 +3,8 @@ package com.max.config.items;
 import com.max.config.Config;
 import com.max.config.ConfigItemSeekBar;
 
-public class CacheSizeSeekBar extends ConfigItemSeekBar {
-    public CacheSizeSeekBar(String title, Config config) {
+public class MapBrightnessSeekBar extends ConfigItemSeekBar {
+    public MapBrightnessSeekBar(String title, Config config) {
         super(title, config);
     }
 

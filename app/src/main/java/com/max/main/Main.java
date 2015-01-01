@@ -3,25 +3,32 @@ package com.max.main;
 import com.max.config.Config;
 import com.max.config.ConfigItem;
 import com.max.config.ConfigItemLabel;
+import com.max.config.ConfigItemSwitch;
 import com.max.config.ConfigListAdapter;
 import com.max.config.items.CacheSizeSeekBar;
 import com.max.config.items.GpsEnabledSwitch;
 import com.max.config.items.GpsTraceLayerSwitch;
+import com.max.config.items.MapBrightnessSeekBar;
 import com.max.config.items.PointsOfInterestLayerSwitch;
 import com.max.config.items.RouteLayerSwitch;
 import com.max.drawing.Renderer;
 import com.max.latlng.LatLngHelper;
+import com.max.location.GpsLocationService;
+import com.max.location.MockLocationService;
 import com.max.logic.XYd;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 
 import android.content.Context;
+import android.content.Intent;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.provider.Settings;
 import android.util.Log;
 import android.app.Activity;
 import android.widget.ListView;
@@ -41,6 +48,9 @@ public class Main extends Activity {
 
     private Config config;
 
+    private MockLocationService mockLocationService;
+    private GpsLocationService gpsLocationService;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -52,15 +62,33 @@ public class Main extends Activity {
         renderer.config = config;
 
         // start the location service as early as possible to get the GPS going
-//        initLocationService();
+        initLocationService();
 
         List<ConfigItem> configItems = Arrays.asList(
-                new GpsEnabledSwitch(config),
-                new CacheSizeSeekBar(config),
+                new ConfigItemLabel("General"),
+                new ConfigItemSwitch("Use GPS", config) {
+                    @Override protected boolean getSelection() {
+                        return getConfig().gpsEnabled;
+                    }
+
+                    @Override protected void setSelection(boolean selected) {
+                        getConfig().gpsEnabled = selected;
+                        if (selected) {
+                            mockLocationService.stop();
+                            gpsLocationService.start();
+                        } else {
+                            gpsLocationService.stop();
+                            mockLocationService.start();
+                        }
+                    }
+                },
+                new ConfigItemLabel("Map view"),
+                new MapBrightnessSeekBar("Brightness", config),
+                new CacheSizeSeekBar("Cache Size", config),
                 new ConfigItemLabel("Layers"),
-                new RouteLayerSwitch(config),
-                new PointsOfInterestLayerSwitch(config),
-                new GpsTraceLayerSwitch(config));
+                new RouteLayerSwitch("Route", config),
+                new PointsOfInterestLayerSwitch("Points of Interest", config),
+                new GpsTraceLayerSwitch("GPS Trace", config));
 
 //        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
         drawerList = (ListView) findViewById(R.id.left_drawer);
@@ -112,7 +140,7 @@ public class Main extends Activity {
     private final LocationListener locationListener = new LocationListener() {
         public void onLocationChanged(Location location) {
             // TODO use nanos, not getTime
-            Log.d("AccuMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
+            Log.d("OptiMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
                     location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.hasBearing(), location.getAccuracy(), location.getTime()));
             XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
             renderer.setGPSCoordinate(xy.x, xy.y);
@@ -125,47 +153,15 @@ public class Main extends Activity {
         public void onProviderDisabled(String provider) { }
     };
 
-    private static final long MOCK_LOCATION_UPDATE_INTERVAL_MS = 1000;
-
-    /** Mock location service that essentially does a random walk. */
-    private final Runnable mockLocationService = new Runnable() {
-        private double lat = 59.356776, lng = 17.986762;
-        private float bearing = 0;
-        private Random rnd = new Random(0);
-
-        private Location mockLocation = new Location("mock") {
-            @Override public double getLatitude() { return lat; }
-            @Override public double getLongitude() { return lng; }
-            @Override public boolean hasBearing() { return true; }
-            @Override public float getBearing() { return bearing; }
-            @Override public float getAccuracy() { return 0; }
-            @Override public long getTime() { return 0; }
-        };
-
-        @Override public void run() {
-            bearing += rnd.nextDouble() * 10;
-            double speed = rnd.nextDouble() * 3e-4;
-            lat += speed * Math.sin(bearing * Math.PI / 180);
-            lng += speed * Math.cos(bearing * Math.PI / 180);
-            locationListener.onLocationChanged(mockLocation);
-
-            handler.postDelayed(this, MOCK_LOCATION_UPDATE_INTERVAL_MS);
-        }
-    };
-
-    private Handler handler = new Handler();
-
     private void initLocationService() {
-        if (config.useMockLocationService) {
-            handler.postDelayed(new Runnable() {
-                @Override public void run() {
-                    handler.postDelayed(mockLocationService, MOCK_LOCATION_UPDATE_INTERVAL_MS);
-                }
-            }, 1000);
+        mockLocationService = new MockLocationService(locationListener);
+        gpsLocationService = new GpsLocationService((LocationManager) getSystemService(Context.LOCATION_SERVICE), locationListener);
+
+        if (!config.gpsEnabled) {
+            mockLocationService.start();
         } else {
-            LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
+            gpsLocationService.start();
         }
-        Log.d("AccuMap", (config.useMockLocationService ? "Mock" : "GPS") + " location service initialized");
+        Log.d("OptiMap", (config.gpsEnabled ? "GPS" : "Mock") + " location service initialized");
     }
 }

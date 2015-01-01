@@ -10,8 +10,8 @@ import com.max.main.Main;
 import com.max.main.R;
 
 public abstract class ConfigItemSwitch extends ConfigItem implements View.OnClickListener {
-    public ConfigItemSwitch(Config config, String title) {
-        super(config, title);
+    public ConfigItemSwitch(String title, Config config) {
+        super(title, config);
     }
 
     @Override public void buildView(View view) {

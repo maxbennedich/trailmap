@@ -9,8 +9,8 @@ import com.max.main.Main;
 import com.max.main.R;
 
 public abstract class ConfigItemSeekBar extends ConfigItem {
-    public ConfigItemSeekBar(Config config, String title) {
-        super(config, title);
+    public ConfigItemSeekBar(String title, Config config) {
+        super(title, config);
     }
 
     @Override public void buildView(View view) {

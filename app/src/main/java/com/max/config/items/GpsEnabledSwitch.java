@@ -4,8 +4,8 @@ import com.max.config.Config;
 import com.max.config.ConfigItemSwitch;
 
 public class GpsEnabledSwitch extends ConfigItemSwitch {
-    public GpsEnabledSwitch(Config config) {
-        super(config, "Use GPS");
+    public GpsEnabledSwitch(String title, Config config) {
+        super(title, config);
     }
 
     @Override
@@ -16,5 +16,8 @@ public class GpsEnabledSwitch extends ConfigItemSwitch {
     @Override
     protected void setSelection(boolean selected) {
         getConfig().gpsEnabled = selected;
+        if (selected) {
+
+        }
     }
 }
