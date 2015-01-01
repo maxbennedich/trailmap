@@ -3,6 +3,7 @@ package com.max.main;
 import com.max.config.Config;
 import com.max.config.ConfigItem;
 import com.max.config.ConfigItemLabel;
+import com.max.config.ConfigItemSeekBar;
 import com.max.config.ConfigItemSwitch;
 import com.max.config.ConfigListAdapter;
 import com.max.drawing.Renderer;
@@ -68,22 +69,31 @@ public class Controller extends Activity {
         List<ConfigItem<?>> configItems = Arrays.asList(
                 new ConfigItemLabel("General"),
                 new ConfigItemSwitch("Use GPS", config.gpsEnabled) {
-                    @Override protected void select(Boolean selected) {
-                        locationServiceController.enableGps(selected);
+                    @Override protected void onUpdate() {
+                        locationServiceController.enableGps(config.gpsEnabled.value);
                     }
                 },
                 new ConfigItemSwitch("Simulate movement", config.mockLocationService) {
-                    @Override protected void select(Boolean selected) {
-                        locationServiceController.enableMock(selected);
+                    @Override protected void onUpdate() {
+                        locationServiceController.enableMock(config.mockLocationService.value);
                     }
                 },
-                new ConfigItemLabel("Map view"));
-//                new MapBrightnessSeekBar("Brightness", config),
+                new ConfigItemLabel("Layers"),
+                new ConfigItemSwitch("Route", config.showRoute) {
+                    @Override protected void onUpdate() { renderer.invalidateTileCache(true); }
+                },
+                new ConfigItemSwitch("Points of Interest", config.showPointsOfInterest) {
+                    @Override protected void onUpdate() { renderer.invalidateTileCache(true); }
+                },
+                new ConfigItemSwitch("GPS Trace", config.showGpsTrace) {
+                    @Override protected void onUpdate() { renderer.invalidateTileCache(true); }
+                },
+                new ConfigItemLabel("Map view"),
+                new ConfigItemSeekBar("Brightness", config.mapBrightness) {
+                    @Override protected void onUpdate() { renderer.invalidateTileCache(true); }
+                }
 //                new CacheSizeSeekBar("Cache Size", config),
-//                new ConfigItemLabel("Layers"),
-//                new RouteLayerSwitch("Route", config),
-//                new PointsOfInterestLayerSwitch("Points of Interest", config),
-//                new GpsTraceLayerSwitch("GPS Trace", config));
+        );
 
 //        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
         drawerList = (ListView) findViewById(R.id.left_drawer);

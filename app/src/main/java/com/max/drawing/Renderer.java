@@ -177,19 +177,20 @@ public class Renderer extends View {
             Tile tile = new Tile(zoom, tx, ty, map);
             Canvas canvas = new Canvas(tile.map);
 
-            // dim tile
-            Paint p = new Paint();
-            p.setColor(Color.BLACK);
-            p.setAlpha(63);
-            p.setStrokeWidth(1);
-            canvas.drawRect(0, 0, getWidth(), getHeight(), p);
+            if (config.mapBrightness.value != 100) {
+                // dim tile
+                Paint p = Paints.DIM_SCREEN;
+                p.setAlpha(255 - (255 * config.mapBrightness.value / 100));
+                canvas.drawRect(0, 0, getWidth(), getHeight(), p);
+            }
 
-            if (config.showRoute)
+            if (config.showRoute.value)
                 drawPath(canvas, tile);
-            if (config.showGpsTrace)
+            if (config.showGpsTrace.value)
                 drawHistory(canvas, tile);
-            if (config.showPointsOfInterest)
+            if (config.showPointsOfInterest.value)
                 drawPointsOfInterest(canvas, tile);
+
             return tile;
         }
         return null;
@@ -201,6 +202,12 @@ public class Renderer extends View {
 
     float utmToTilePixelY(int utmy, int utmy0, int tileSize) {
         return (float)(utmy0 + tileSize-1 - utmy)*256/tileSize;
+    }
+
+    public void invalidateTileCache(boolean invalidateView) {
+        tileCache.clear();
+        if (invalidateView)
+            invalidate();
     }
 
     QuadMatches matches = new QuadMatches();
@@ -343,10 +350,10 @@ public class Renderer extends View {
         gpsX = utmX;
         gpsY = utmY;
 
-        if (config.showGpsTrace) {
+        if (config.showGpsTrace.value) {
             int utmIX = historyUtmX[historyIdx] = (int) (utmX + 0.5);
             int utmIY = historyUtmY[historyIdx] = (int) (utmY + 0.5);
-            ++historyIdx;
+            historyIdx = (historyIdx+1) % MAX_HISTORY_POINTS;
 
             // mark point on tile
             int tileSizeUtm = 1<<(20-zoomLevel);

@@ -22,5 +22,5 @@ public abstract class ConfigItem<V> {
 
     abstract protected int getResource();
 
-    abstract protected void select(V selected);
+    protected void onUpdate() { }
 }

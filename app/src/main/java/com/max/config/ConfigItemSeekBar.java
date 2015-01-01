@@ -20,10 +20,12 @@ public abstract class ConfigItemSeekBar extends ConfigItem<Integer> {
 
         Controller.globalSeekBar = seekBar;
         seekBar.setProgress(value.value);
+        seekText.setText(Integer.toString(value.value));
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                value.value = progress;
                 seekText.setText(Integer.toString(progress));
-                select(progress);
+                onUpdate();
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }

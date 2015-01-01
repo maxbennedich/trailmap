@@ -29,6 +29,4 @@ public class ConfigItemLabel extends ConfigItem<Void> {
     @Override protected int getResource() {
         return R.layout.config_divider;
     }
-
-    @Override protected void select(Void selected) { }
 }

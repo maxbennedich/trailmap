@@ -7,7 +7,7 @@ import java.util.Random;
 
 /** Mock location service that essentially does a random walk. */
 public class MockLocationService implements Runnable, PausableLocationService {
-    private static final long MOCK_LOCATION_UPDATE_INTERVAL_MS = 1000;
+    private static final long MOCK_LOCATION_UPDATE_INTERVAL_MS = 30;
 
     private final LocationListenerWithPreviousLocation locationListener;
 
@@ -51,7 +51,7 @@ public class MockLocationService implements Runnable, PausableLocationService {
             lng = locationListener.previousLocation.getLongitude();
         }
 
-        bearing += rnd.nextDouble() * 10;
+        bearing += (rnd.nextDouble() - 0.5) * 30;
         double speed = rnd.nextDouble() * 3e-4;
         lat += speed * Math.cos(bearing * Math.PI / 180);
         lng += speed * Math.sin(bearing * Math.PI / 180);

@@ -1,8 +1,14 @@
 package com.max.drawing;
 
+import android.graphics.Color;
 import android.graphics.Paint;
 
 public class Paints {
+
+    // TODO: is strokewidth used with fill paint?
+    /** Alpha needs to be added later. */
+    public static final Paint DIM_SCREEN = pb().color(0).strokeWidth(1).get();
+
     public static final int FONT_SIZE_POI = 20;
     public static final Paint FONT_POI = pb().color(0xffffffff).textSize(FONT_SIZE_POI).antialias().get();
     public static final Paint FONT_OUTLINE_POI = pb().color(0xff000000).textSize(FONT_SIZE_POI).stroke(4).antialias().get();

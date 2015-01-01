@@ -21,7 +21,7 @@ public abstract class ConfigItemSwitch extends ConfigItem<Boolean> implements Vi
 
     @Override public void onClick(View v) {
         value.value = !value.value;
-        select(value.value);
+        onUpdate();
 //                        drawerList.setItemChecked(position, selected[position]);
 //                        drawerLayout.closeDrawer(drawerList);
     }

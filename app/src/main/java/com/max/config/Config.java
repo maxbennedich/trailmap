@@ -1,9 +1,10 @@
 package com.max.config;
 
 public class Config {
-    public boolean showGpsTrace = true;
-    public boolean showRoute = false;
-    public boolean showPointsOfInterest = false;
+    public OptionValue<Boolean> showGpsTrace = new OptionValue<>(true);
+    public OptionValue<Boolean> showRoute = new OptionValue<>(false);
+    public OptionValue<Boolean> showPointsOfInterest = new OptionValue<>(false);
     public OptionValue<Boolean> gpsEnabled = new OptionValue<>(false);
     public OptionValue<Boolean> mockLocationService = new OptionValue<>(true);
+    public OptionValue<Integer> mapBrightness = new OptionValue<>(65);
 }
