@@ -25,6 +25,8 @@ public class Paints {
 
     public static final Paint HISTORY_PATH = pb().color(0xff0000ff).stroke(HISTORY_WIDTH).antialias().get();
 
+    public static final Paint CONFIG_DIVIDER = pb().color(0xff3f3f3f).strokeWidth(2).get();
+
     static PaintBuilder pb() { return new PaintBuilder(); }
 
     static class PaintBuilder {

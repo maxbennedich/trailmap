@@ -1,4 +1,4 @@
-<com.max.main.CustomInterceptDrawerLayout
+<com.max.config.CustomInterceptDrawerLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
@@ -19,4 +19,4 @@
         android:divider="@android:color/transparent"
         android:dividerHeight="0dp"
         android:background="#7f000000"/>
-</com.max.main.CustomInterceptDrawerLayout>
+</com.max.config.CustomInterceptDrawerLayout>

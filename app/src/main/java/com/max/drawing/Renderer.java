@@ -18,7 +18,7 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 
 import com.max.logic.Tile;
-import com.max.main.Config;
+import com.max.config.Config;
 import com.max.main.R;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
@@ -37,6 +37,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Renderer extends View {
+
+    public Config config;
 
     public List<QuadPoint> points;
     public QuadNode quadRoot;
@@ -182,11 +184,11 @@ public class Renderer extends View {
             p.setStrokeWidth(1);
             canvas.drawRect(0, 0, getWidth(), getHeight(), p);
 
-            if (Config.SHOW_PATH)
+            if (config.showRoute)
                 drawPath(canvas, tile);
-            if (Config.SHOW_GPS_TRACE)
+            if (config.showGpsTrace)
                 drawHistory(canvas, tile);
-            if (Config.SHOW_POINTS_OF_INTEREST)
+            if (config.showPointsOfInterest)
                 drawPointsOfInterest(canvas, tile);
             return tile;
         }
@@ -341,7 +343,7 @@ public class Renderer extends View {
         gpsX = utmX;
         gpsY = utmY;
 
-        if (Config.SHOW_GPS_TRACE) {
+        if (config.showGpsTrace) {
             int utmIX = historyUtmX[historyIdx] = (int) (utmX + 0.5);
             int utmIY = historyUtmY[historyIdx] = (int) (utmY + 0.5);
             ++historyIdx;
