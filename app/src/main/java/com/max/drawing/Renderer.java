@@ -5,7 +5,6 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -62,6 +61,9 @@ public class Renderer extends View {
     private double scalingZoom = scaleFactor / (1<<zoomLevel);
 
     private static final int ZOOM_LEVEL_SHOW_LABELS = 7;
+
+    private static final int TILE_WIDTH_BITS = 8;
+    private static final int TILE_WIDTH_PIXELS = 1<<TILE_WIDTH_BITS;
 
     /** 100 corresponds to ~26 mb image data (256x256 pixels, 4 bytes per pixel) */
     private static final int TILE_CACHE_SIZE = 100;
@@ -175,35 +177,38 @@ public class Renderer extends View {
             }
 
             Tile tile = new Tile(zoom, tx, ty, map);
-            Canvas canvas = new Canvas(tile.map);
 
             if (config.mapBrightness.value != 100) {
                 // dim tile
                 Paint p = Paints.DIM_SCREEN;
                 p.setAlpha(255 - (255 * config.mapBrightness.value / 100));
-                canvas.drawRect(0, 0, getWidth(), getHeight(), p);
+                tile.canvas.drawRect(0, 0, getWidth(), getHeight(), p);
             }
 
             if (config.showRoute.value)
-                drawPath(canvas, tile);
+                drawPath(tile.canvas, tile);
             if (config.showGpsTrace.value)
-                drawHistory(canvas, tile);
+                drawHistory(tile.canvas, tile);
             if (config.showPointsOfInterest.value)
-                drawPointsOfInterest(canvas, tile);
+                drawPointsOfInterest(tile.canvas, tile);
 
             return tile;
         }
         return null;
     }
 
-    final float utmToTilePixelX(int utmx, int utmx0, int tileSize) {
-        return (float)(utmx - utmx0)*256/tileSize;
+    final float utmToTilePixelX(int utmx, int utmx0, int tileSizeUtm) {
+        return (float)(utmx - utmx0)*TILE_WIDTH_PIXELS/tileSizeUtm;
     }
 
-    float utmToTilePixelY(int utmy, int utmy0, int tileSize) {
-        return (float)(utmy0 + tileSize-1 - utmy)*256/tileSize;
+    float utmToTilePixelY(int utmy, int utmy0, int tileSizeUtm) {
+        return (float)(utmy0 + tileSizeUtm-1 - utmy)*TILE_WIDTH_PIXELS/tileSizeUtm;
     }
 
+    /**
+     * Clears the tile cache, forcing all tiles to be re-rendered.
+     * Optionally also invalidates the view to force a display redraw.
+     */
     public void invalidateTileCache(boolean invalidateView) {
         tileCache.clear();
         if (invalidateView)
@@ -216,18 +221,19 @@ public class Renderer extends View {
         // TODO try arcs instead of lines
 
         // calculate utm coordinates for tile corners
-        int tileSize = 1<<(20-tile.zoomLevel);
-        int utx0 = tile.tx * tileSize - 1_200_000;
-        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
+        int tileSizeBits = 20 - tile.zoomLevel;
+        int tileSizeUtm = 1 << tileSizeBits;
+        int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
+        int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
 
         // find route points visible on tile by querying quad tree
         matches.clear();
-        int pathWidthOffset = Paints.PATH_WIDTH * tileSize / 256;
+        int pathWidthOffset = Paints.PATH_WIDTH << tileSizeBits - TILE_WIDTH_BITS;
         int queryUtx0 = utx0 - pathWidthOffset/2;
         int queryUty0 = uty0 - pathWidthOffset/2;
         byte queryLevel = (byte)(16-log2(scaleFactor)*1.5);
         queryLevel = (byte)Math.min(10, Math.max(0, queryLevel));
-        quadRoot.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSize+pathWidthOffset, queryUty0+tileSize+pathWidthOffset, points, matches);
+        quadRoot.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSizeUtm+pathWidthOffset, queryUty0+tileSizeUtm+pathWidthOffset, points, matches);
 
         if (matches.matchCount != 0) {
             matches.sort();
@@ -248,13 +254,13 @@ public class Renderer extends View {
                 if (prevIdx == -1 || idx - prevIdx > stepSize) {
                     // just entered screen, draw partial on-screen segment
                     p = points.get(idx);
-                    float px = utmToTilePixelX(p.x, utx0, tileSize);
-                    float py = utmToTilePixelY(p.y, uty0, tileSize);
+                    float px = utmToTilePixelX(p.x, utx0, tileSizeUtm);
+                    float py = utmToTilePixelY(p.y, uty0, tileSizeUtm);
 
                     // the math below for idx=0 is to select the last point for the current query level
                     QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
-                    float p0x = utmToTilePixelX(p0.x, utx0, tileSize);
-                    float p0y = utmToTilePixelY(p0.y, uty0, tileSize);
+                    float p0x = utmToTilePixelX(p0.x, utx0, tileSizeUtm);
+                    float p0y = utmToTilePixelY(p0.y, uty0, tileSizeUtm);
                     paths[p0.surface.ordinal()].moveTo(p0x, p0y);
                     paths[p0.surface.ordinal()].lineTo(px, py);
 
@@ -270,8 +276,8 @@ public class Renderer extends View {
 
                 // draw line to the next point (which may or may not be on screen)
                 p2 = points.get(Math.min(idx + stepSize, points.size() - 1));
-                p2x = utmToTilePixelX(p2.x, utx0, tileSize);
-                p2y = utmToTilePixelY(p2.y, uty0, tileSize);
+                p2x = utmToTilePixelX(p2.x, utx0, tileSizeUtm);
+                p2y = utmToTilePixelY(p2.y, uty0, tileSizeUtm);
                 p2Surf = p.surface.ordinal();
                 paths[p2Surf].lineTo(p2x, p2y);
 
@@ -284,15 +290,16 @@ public class Renderer extends View {
 
     private void drawHistory(Canvas canvas, Tile tile) {
         // calculate utm coordinates for tile corners
-        int tileSize = 1<<(20-tile.zoomLevel);
-        int utx0 = tile.tx * tileSize - 1_200_000;
-        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
+        int tileSizeBits = 20 - tile.zoomLevel;
+        int tileSizeUtm = 1 << tileSizeBits;
+        int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
+        int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
 
         // TODO insert into quad tree
         for (int k = 0; k < historyIdx; ++k) {
-            float x = utmToTilePixelX(historyUtmX[k], utx0, tileSize);
-            float y = utmToTilePixelY(historyUtmY[k], uty0, tileSize);
-            if (x >= -Paints.HISTORY_WIDTH/2 && x < tileSize+Paints.HISTORY_WIDTH/2 && y >= -Paints.HISTORY_WIDTH/2 && y < tileSize+Paints.HISTORY_WIDTH/2) {
+            float x = utmToTilePixelX(historyUtmX[k], utx0, tileSizeUtm);
+            float y = utmToTilePixelY(historyUtmY[k], uty0, tileSizeUtm);
+            if (x >= -Paints.HISTORY_WIDTH/2 && x < tileSizeUtm+Paints.HISTORY_WIDTH/2 && y >= -Paints.HISTORY_WIDTH/2 && y < tileSizeUtm+Paints.HISTORY_WIDTH/2) {
                 canvas.drawPoint(x, y, Paints.HISTORY_PATH);
             }
         }
@@ -300,15 +307,16 @@ public class Renderer extends View {
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
         // calculate utm coordinates for tile corners
-        int tileSize = 1<<(20-tile.zoomLevel);
-        int utx0 = tile.tx * tileSize - 1_200_000;
-        int uty0 = 8_500_000 - tile.ty * tileSize - tileSize; // TODO check the math
+        int tileSizeBits = 20 - tile.zoomLevel;
+        int tileSizeUtm = 1 << tileSizeBits;
+        int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
+        int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
 
         for (int k = 0; k < pointsOfInterest.size(); ++k) {
             PointOfInterest poi = pointsOfInterest.get(k);
-            float x = utmToTilePixelX(poi.utmX, utx0, tileSize);
-            float y = utmToTilePixelY(poi.utmY, uty0, tileSize);
-            if (x >= -Paints.POINT_OF_INTEREST_SIZE/2 && x < tileSize+Paints.POINT_OF_INTEREST_SIZE/2 && y >= -Paints.POINT_OF_INTEREST_SIZE/2 && y < tileSize+Paints.POINT_OF_INTEREST_SIZE/2) {
+            float x = utmToTilePixelX(poi.utmX, utx0, tileSizeUtm);
+            float y = utmToTilePixelY(poi.utmY, uty0, tileSizeUtm);
+            if (x >= -Paints.POINT_OF_INTEREST_SIZE/2 && x < tileSizeUtm+Paints.POINT_OF_INTEREST_SIZE/2 && y >= -Paints.POINT_OF_INTEREST_SIZE/2 && y < tileSizeUtm+Paints.POINT_OF_INTEREST_SIZE/2) {
                 canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST_OUTLINE);
                 canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST);
             }
@@ -317,7 +325,7 @@ public class Renderer extends View {
                 float textWidth = Paints.FONT_OUTLINE_POI.measureText(poi.label);
                 float textHeight = Paints.FONT_OUTLINE_POI.getTextSize(); // TODO: constant
                 float tx = x+6, ty = y+6;
-                if (tx >= -textWidth && tx < tileSize && ty >= -textHeight && ty < tileSize) {
+                if (tx >= -textWidth && tx < tileSizeUtm && ty >= -textHeight && ty < tileSizeUtm) {
                     canvas.drawText(poi.label, tx, ty, Paints.FONT_OUTLINE_POI);
                     canvas.drawText(poi.label, tx, ty, Paints.FONT_POI);
                 }
@@ -326,11 +334,11 @@ public class Renderer extends View {
     }
 
     final int pixelToUtm(double pixel) {
-        return (int)(pixel*(1<<(20-zoomLevel-8)) / scalingZoom + 0.5); // 8 since tile is 256 pixels wide
+        return (int)(pixel*(1<<(20-zoomLevel-TILE_WIDTH_BITS)) / scalingZoom + 0.5);
     }
 
     final double utmToPixel(double utm) {
-        return utm/(1<<(20-zoomLevel-8)) * scalingZoom; // 8 since tile is 256 pixels wide
+        return utm/(1<<(20-zoomLevel-TILE_WIDTH_BITS)) * scalingZoom;
     }
 
     final double utmToScreenX(int utmx) {
@@ -341,6 +349,8 @@ public class Renderer extends View {
         return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
     }
 
+    /** Minimum distance (squared), in meters, between two consecutive GPS history points. */
+    private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
     private static final int MAX_HISTORY_POINTS = 1000;
     private int[] historyUtmX = new int[MAX_HISTORY_POINTS];
     private int[] historyUtmY = new int[MAX_HISTORY_POINTS];
@@ -351,24 +361,61 @@ public class Renderer extends View {
         gpsY = utmY;
 
         if (config.showGpsTrace.value) {
-            int utmIX = historyUtmX[historyIdx] = (int) (utmX + 0.5);
-            int utmIY = historyUtmY[historyIdx] = (int) (utmY + 0.5);
-            historyIdx = (historyIdx+1) % MAX_HISTORY_POINTS;
+            int utmIX = (int) (utmX + 0.5);
+            int utmIY = (int) (utmY + 0.5);
 
-            // mark point on tile
-            int tileSizeUtm = 1<<(20-zoomLevel);
-            int tx = (1_200_000 + utmIX - (utmIX < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-            int ty = (8_500_000 - utmIY - (utmIY > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-            Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
-            if (tile != null) {
-                int tileUtmX = tx * tileSizeUtm - 1_200_000;
-                int tileUtmY = 8_500_000 - ty * tileSizeUtm;
-                float tilePixelX = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
-                float tilePixelY = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
+            boolean addToHistory = true;
+            if (historyIdx > 0) {
+                int difX = utmIX - historyUtmX[historyIdx - 1];
+                int difY = utmIY - historyUtmY[historyIdx - 1];
+                addToHistory = difX * difX + difY * difY >= MIN_HISTORY_POINT_DIST2;
+            }
 
-                Canvas canvas = new Canvas(tile.map);
-                canvas.drawPoint(tilePixelX, tilePixelY, Paints.HISTORY_PATH);
-                Log.d("AccuMap", "Setting tile pixel "+tilePixelX+","+tilePixelY+" for tile "+tx+","+ty);
+            if (addToHistory) {
+                historyUtmX[historyIdx] = utmIX;
+                historyUtmY[historyIdx] = utmIY;
+
+                if (historyIdx > 0) {
+                    // draw new point on cached tiles (of all zoom levels)
+                    for (int zoom = MIN_ZOOM_LEVEL; zoom <= MAX_ZOOM_LEVEL; ++zoom) {
+                        int tileSizeBits = 20 - zoom;
+                        int tileSizeUtm = 1 << tileSizeBits;
+                        int tx = 1_200_000 + utmIX >> tileSizeBits;
+                        int ty = 8_500_000 - utmIY >> tileSizeBits;
+
+                        int tileUtmX = (tx << tileSizeBits) - 1_200_000;
+                        int tileUtmY = 8_500_000 - (ty + 1 << tileSizeBits);
+                        float tilePixelX1 = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
+                        float tilePixelY1 = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
+
+                        float tilePixelX0 = utmToTilePixelX(historyUtmX[historyIdx-1], tileUtmX, tileSizeUtm);
+                        float tilePixelY0 = utmToTilePixelY(historyUtmY[historyIdx-1], tileUtmY, tileSizeUtm);
+
+                        // Calculate first and last tile in each dimension that should be painted
+                        // by the line from the previous point to the new point. This is needed
+                        // to not create glitches between tiles. For the majority of points,
+                        // these values will all be 0, meaning that just one tile is painted.
+                        int txDif0 = (int)Math.floor(Math.min(tilePixelX0, tilePixelX1) - Paints.HISTORY_WIDTH/2) >> TILE_WIDTH_BITS;
+                        int tyDif0 = (int)Math.floor(Math.min(tilePixelY0, tilePixelY1) - Paints.HISTORY_WIDTH/2) >> TILE_WIDTH_BITS;
+                        int txDif1 = (int)Math.floor(Math.max(tilePixelX0, tilePixelX1) + Paints.HISTORY_WIDTH/2) >> TILE_WIDTH_BITS;
+                        int tyDif1 = (int)Math.floor(Math.max(tilePixelY0, tilePixelY1) + Paints.HISTORY_WIDTH/2) >> TILE_WIDTH_BITS;
+
+                        for (int tyDif = tyDif0; tyDif <= tyDif1; ++tyDif) {
+                            for (int txDif = txDif0; txDif <= txDif1; ++txDif) {
+                                Tile tile = tileCache.get(getTilePos(zoom, tx+txDif, ty+tyDif));
+                                if (tile != null) {
+                                    float px0 = tilePixelX0 - (txDif<<TILE_WIDTH_BITS);
+                                    float py0 = tilePixelY0 - (tyDif<<TILE_WIDTH_BITS);
+                                    float px1 = tilePixelX1 - (txDif<<TILE_WIDTH_BITS);
+                                    float py1 = tilePixelY1 - (tyDif<<TILE_WIDTH_BITS);
+                                    tile.canvas.drawLine(px0, py0, px1, py1, Paints.HISTORY_PATH);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                historyIdx = (historyIdx + 1) % MAX_HISTORY_POINTS;
             }
         }
     }
@@ -391,20 +438,19 @@ public class Renderer extends View {
         int utm1y = (int)Math.ceil(centerUtmY+pixelToUtm(getHeight()/2));
 
         // convert utm coordinates to tile indices
-        int tileSizeUtm = 1<<(20-zoomLevel);
+        int tileSizeBits = 20-zoomLevel;
 
-        // the ternaries below are needed to round negative as well as positive numbers down
-        int tx0 = (1_200_000 + utm0x - (utm0x < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-        int ty0 = (8_500_000 - utm1y - (utm1y > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-        int tx1 = (1_200_000 + utm1x - (utm1x < -1_200_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
-        int ty1 = (8_500_000 - utm0y - (utm0y > 8_500_000 ? tileSizeUtm-1 : 0)) / tileSizeUtm;
+        int tx0 = 1_200_000 + utm0x >> tileSizeBits;
+        int ty0 = 8_500_000 - utm1y >> tileSizeBits;
+        int tx1 = 1_200_000 + utm1x >> tileSizeBits;
+        int ty1 = 8_500_000 - utm0y >> tileSizeBits;
 
         for (int ty = ty0; ty <= ty1; ++ty) {
-            int tileUtmY = 8_500_000 - ty * tileSizeUtm;
+            int tileUtmY = 8_500_000 - (ty << tileSizeBits);
             double tileScreenY = utmToScreenY(tileUtmY);
 
             for (int tx = tx0; tx <= tx1; ++tx) {
-                int tileUtmX = tx * tileSizeUtm - 1_200_000;
+                int tileUtmX = (tx << tileSizeBits) - 1_200_000;
                 double tileScreenX = utmToScreenX(tileUtmX);
 
                 Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
