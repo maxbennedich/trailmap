@@ -63,7 +63,7 @@ public class QuadNode implements Serializable {
     }
 
     /** Insert a new leaf by traversing the tree and splitting the final node if necessary. */
-    public void insertPoint(int newPointIdx, List<QuadPoint> points) {
+    public void insertPoint(int newPointIdx, QuadPointArray points) {
         int newLevel = level(newPointIdx);
 
         if (pointCount < QuadNode.CAPACITY) {
@@ -103,7 +103,7 @@ public class QuadNode implements Serializable {
             }
 
             int xm = (x0+x1)/2, ym = (y0+y1)/2;
-            int k = (points.get(newPointIdx).x <= xm ? 0 : 1) + (points.get(newPointIdx).y <= ym ? 0 : 2);
+            int k = (points.x[newPointIdx] <= xm ? 0 : 1) + (points.y[newPointIdx] <= ym ? 0 : 2);
 
             // split node if it's not already split; create child node if it doesn't already exist
             if (q == null)
@@ -115,11 +115,11 @@ public class QuadNode implements Serializable {
         }
     }
 
-    public void queryTree(int minLevel, int qx0, int qy0, int qx1, int qy1, List<QuadPoint> points, Renderer.QuadMatches matches) {
+    public void queryTree(int minLevel, int qx0, int qy0, int qx1, int qy1, QuadPointArray points, Renderer.QuadMatches matches) {
         for (int p = 0; p < pointCount; ++p) {
             int idx = pointIdx[p];
-            QuadPoint qp = points.get(idx);
-            if (level[p] >= minLevel && qx0 <= qp.x && qx1 >= qp.x && qy0 <= qp.y && qy1 >= qp.y)
+            int x = points.x[idx], y = points.y[idx];
+            if (level[p] >= minLevel && qx0 <= x && qx1 >= x && qy0 <= y && qy1 >= y)
                 matches.add(idx);
         }
         if (q != null)

@@ -20,6 +20,7 @@ import com.max.logic.XYd;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
+import com.max.route.QuadPointArray;
 import com.max.route.Route;
 
 import android.content.Context;
@@ -131,7 +132,7 @@ public class Controller extends Activity {
 
         InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
-        List<QuadPoint> points;
+        QuadPointArray points;
         try {
             points = routeLoader.loadRoute(is);
         } catch (InvalidKMLException e) {
@@ -139,7 +140,7 @@ public class Controller extends Activity {
         }
 
         time = SystemClock.uptimeMillis() - time;
-        Log.d("OptiMap", "Route has " + points.size() + " points");
+        Log.d("OptiMap", "Route has " + points.nrPoints + " points");
         Log.d("OptiMap", "Loading route took " + time + " ms");
 
         time = SystemClock.uptimeMillis();
@@ -177,18 +178,18 @@ public class Controller extends Activity {
         Log.d("OptiMap", "Time per tree query: " + (totTime*1_000_000/NR) + " nanos");
     }
 
-    QuadNode buildQuadTree(List<QuadPoint> points) {
+    QuadNode buildQuadTree(QuadPointArray points) {
         // find points bounding box (min/max)
         int x0 = 1<<30, y0 = 1<<30, x1 = -(1<<30), y1 = -(1<<30);
-        for (QuadPoint point : points) {
-            x0 = Math.min(x0, point.x);
-            y0 = Math.min(y0, point.y);
-            x1 = Math.max(x1, point.x);
-            y1 = Math.max(y1, point.y);
+        for (int k = 0; k < points.nrPoints; ++k) {
+            x0 = Math.min(x0, points.x[k]);
+            y0 = Math.min(y0, points.y[k]);
+            x1 = Math.max(x1, points.x[k]);
+            y1 = Math.max(y1, points.y[k]);
         }
 
         QuadNode root = new QuadNode(x0, y0, x1, y1);
-        for (int k = 0; k < points.size(); k ++)
+        for (int k = 0; k < points.nrPoints; k ++)
             root.insertPoint(k, points);
 
         return root;

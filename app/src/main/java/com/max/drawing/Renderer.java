@@ -22,6 +22,7 @@ import com.max.main.R;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
+import com.max.route.QuadPointArray;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +40,7 @@ public class Renderer extends View {
 
     public Config config;
 
-    public List<QuadPoint> points;
+    public QuadPointArray points;
     public QuadNode quadRoot;
 
     public List<PointOfInterest> pointsOfInterest;
@@ -244,7 +245,7 @@ public class Renderer extends View {
             int stepSize = 1 << queryLevel;
 
             int prevIdx = -1;
-            QuadPoint p, p2 = null;
+            int pIdx, p2Idx = -1; // TODO can we get rid of pIdx and replace with idx?
             float p2x = 0, p2y = 0;
             int p2Surf = 0;
 
@@ -253,32 +254,32 @@ public class Renderer extends View {
 
                 if (prevIdx == -1 || idx - prevIdx > stepSize) {
                     // just entered screen, draw partial on-screen segment
-                    p = points.get(idx);
-                    float px = utmToTilePixelX(p.x, utx0, tileSizeUtm);
-                    float py = utmToTilePixelY(p.y, uty0, tileSizeUtm);
+                    pIdx = idx;
+                    float px = utmToTilePixelX(points.x[idx], utx0, tileSizeUtm);
+                    float py = utmToTilePixelY(points.y[idx], uty0, tileSizeUtm);
 
                     // the math below for idx=0 is to select the last point for the current query level
-                    QuadPoint p0 = points.get(idx == 0 ? ((points.size() - 1) / stepSize) * stepSize : idx - stepSize);
-                    float p0x = utmToTilePixelX(p0.x, utx0, tileSizeUtm);
-                    float p0y = utmToTilePixelY(p0.y, uty0, tileSizeUtm);
-                    paths[p0.surface.ordinal()].moveTo(p0x, p0y);
-                    paths[p0.surface.ordinal()].lineTo(px, py);
+                    int p0Idx = idx == 0 ? ((points.nrPoints - 1) / stepSize) * stepSize : idx - stepSize;
+                    float p0x = utmToTilePixelX(points.x[p0Idx], utx0, tileSizeUtm);
+                    float p0y = utmToTilePixelY(points.y[p0Idx], uty0, tileSizeUtm);
+                    paths[points.surface[p0Idx].ordinal()].moveTo(p0x, p0y);
+                    paths[points.surface[p0Idx].ordinal()].lineTo(px, py);
 
                     // start next surface type segment
-                    paths[p.surface.ordinal()].moveTo(px, py);
+                    paths[points.surface[idx].ordinal()].moveTo(px, py);
                 } else {
                     // same point as previous "next"; don't calculate again; move if surface changed
-                    p = p2;
-                    int pSurf = p2.surface.ordinal();
+                    pIdx = p2Idx;
+                    int pSurf = points.surface[p2Idx].ordinal();
                     if (pSurf != p2Surf)
                         paths[pSurf].moveTo(p2x, p2y);
                 }
 
                 // draw line to the next point (which may or may not be on screen)
-                p2 = points.get(Math.min(idx + stepSize, points.size() - 1));
-                p2x = utmToTilePixelX(p2.x, utx0, tileSizeUtm);
-                p2y = utmToTilePixelY(p2.y, uty0, tileSizeUtm);
-                p2Surf = p.surface.ordinal();
+                p2Idx = Math.min(idx + stepSize, points.nrPoints - 1);
+                p2x = utmToTilePixelX(points.x[p2Idx], utx0, tileSizeUtm);
+                p2y = utmToTilePixelY(points.y[p2Idx], uty0, tileSizeUtm);
+                p2Surf = points.surface[pIdx].ordinal();
                 paths[p2Surf].lineTo(p2x, p2y);
 
                 prevIdx = idx;
