@@ -8,37 +8,32 @@ import com.max.config.ConfigItemSwitch;
 import com.max.config.ConfigListAdapter;
 import com.max.drawing.Renderer;
 import com.max.kml.BinaryRouteLoader;
-import com.max.kml.CSVRouteLoader;
 import com.max.kml.InvalidKMLException;
-import com.max.kml.KMLRouteLoader;
 import com.max.latlng.LatLngHelper;
-import com.max.location.GpsLocationService;
 import com.max.location.LocationListenerWithPreviousLocation;
 import com.max.location.LocationServiceController;
-import com.max.location.MockLocationService;
 import com.max.logic.XYd;
 import com.max.route.PointOfInterest;
-import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
-import com.max.route.Route;
 
 import android.content.Context;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.util.Log;
 import android.app.Activity;
 import android.widget.ListView;
 import android.widget.SeekBar;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 public class Controller extends Activity {
 
@@ -50,13 +45,16 @@ public class Controller extends Activity {
 
     private LocationServiceController locationServiceController;
 
+    private LogStats loadTimer = new LogStats();
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        Log.d("LogStats", "Starting onCreate");
+        LogStats onCreateTimer = new LogStats();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
         config = new Config();
-
         renderer = ((Renderer)findViewById(R.id.content_frame));
         renderer.config = config;
 
@@ -69,7 +67,9 @@ public class Controller extends Activity {
         createMenu();
 
         loadRoute();
-//        loadPointsOfInterest();
+        loadPointsOfInterest();
+
+        onCreateTimer.log("onCreate finished");
     }
 
     private Renderer renderer;
@@ -127,9 +127,8 @@ public class Controller extends Activity {
         // Sample timings for a ~55k point route (Gotland) showed that loading the binary route took
         // around 400 ms and building the quad tree took around 700 ms with capacity 16 and 850 ms
         // with capacity 64, for a total of 1100-1250 ms. For comparison, deserializing the points
-        // and the built tree from disk took 2700 ms, i.e. more than twice as slow.
-        long time = SystemClock.uptimeMillis();
-
+        // and the built tree from a pre-calculated resource took 2700 ms, i.e. >2 times slower.
+        loadTimer.reset();
         InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
         QuadPointArray points;
@@ -138,44 +137,13 @@ public class Controller extends Activity {
         } catch (InvalidKMLException e) {
             throw new IllegalStateException("Failed to load route resource", e);
         }
+        loadTimer.log("Loaded route");
 
-        time = SystemClock.uptimeMillis() - time;
-        Log.d("OptiMap", "Route has " + points.nrPoints + " points");
-        Log.d("OptiMap", "Loading route took " + time + " ms");
-
-        time = SystemClock.uptimeMillis();
         QuadNode quadRoot = buildQuadTree(points);
-        time = SystemClock.uptimeMillis() - time;
-        Log.d("OptiMap", "Building quad tree took " + time + " ms");
+        loadTimer.log("Built quad tree");
 
         renderer.points = points;
         renderer.quadRoot = quadRoot;
-
-        ////////////////
-        Random rnd = new Random(0);
-        int NR = 10000;
-        int totPoints = 0;
-        long totTime = 0;
-        QuadNode root = quadRoot;
-        Renderer.QuadMatches matches = new Renderer.QuadMatches();
-
-        time = SystemClock.uptimeMillis();
-        for (int k = 0; k < NR; ++k) {
-            int qx0 = root.x0 - 5000 + rnd.nextInt(root.x1-root.x0+10000);
-            int qy0 = root.y0 - 5000 + rnd.nextInt(root.y1-root.y0+10000);
-            int qx1 = root.x0 - 5000 + rnd.nextInt(root.x1-root.x0+10000);
-            int qy1 = root.y0 - 5000 + rnd.nextInt(root.y1-root.y0+10000);
-            if (qx0 > qx1) { int t = qx0; qx0 = qx1; qx1 = t; }
-            if (qy0 > qy1) { int t = qy0; qy0 = qy1; qy1 = t; }
-            int level = rnd.nextInt(17);
-            matches.clear();
-            root.queryTree(level, qx0, qy0, qx1, qy1, points, matches);
-            totPoints += matches.matchCount;
-        }
-        totTime = SystemClock.uptimeMillis() - time;
-
-        Log.d("OptiMap", "Random points: " + totPoints);
-        Log.d("OptiMap", "Time per tree query: " + (totTime*1_000_000/NR) + " nanos");
     }
 
     QuadNode buildQuadTree(QuadPointArray points) {
@@ -196,26 +164,23 @@ public class Controller extends Activity {
     }
 
     private void loadPointsOfInterest() {
-        InputStream is = getResources().openRawResource(R.raw.poi);
-        try {
-            ObjectInputStream ois = new ObjectInputStream(is);
-            List<PointOfInterest> poi = (List<PointOfInterest>)ois.readObject();
-
-            // set labels
-            for (int k = 0; k < poi.size(); ++k) {
-                String name = poi.get(k).name;
-                if (name.endsWith(" kyrka"))
-                    name = name.substring(0, name.length()-" kyrka".length());
-                if (name.endsWith(" - domkyrkan"))
-                    name = name.substring(0, name.length()-" - domkyrkan".length());
-                poi.get(k).label = String.format("%s (%d/%d)", name, k + 1, poi.size());
+        loadTimer.reset();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getResources().openRawResource(R.raw.gotland_pois)))) {
+            int count = Integer.valueOf(reader.readLine());
+            List<PointOfInterest> poi = new ArrayList<>(count);
+            for (int n = 0; n < count; ++n) {
+                String name = reader.readLine();
+                String coordinates = reader.readLine();
+                String[] xy = coordinates.split(",");
+                poi.add(new PointOfInterest(name, Integer.valueOf(xy[0]), Integer.valueOf(xy[1])));
+                poi.get(n).label = String.format("%s (%d/%d)", name, n + 1, count);
             }
 
             renderer.pointsOfInterest = poi;
-            ois.close();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load points of interest resource", e);
         }
+        loadTimer.log("Loaded points of interest");
     }
 
     private final LocationListenerWithPreviousLocation locationListener = new LocationListenerWithPreviousLocation() {

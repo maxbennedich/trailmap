@@ -9,7 +9,6 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
-import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -18,9 +17,9 @@ import android.view.View;
 
 import com.max.logic.Tile;
 import com.max.config.Config;
+import com.max.main.LogStats;
 import com.max.main.R;
 import com.max.route.PointOfInterest;
-import com.max.route.QuadPoint;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
@@ -106,13 +105,15 @@ public class Renderer extends View {
     public Renderer(Context context, AttributeSet aSet) {
         super(context, aSet);
 
+        LogStats timer = new LogStats();
+
         zoomDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
 
         loadBitmaps();
 
         inventoryTiles();
 
-        Log.d("AccuMap", "Initialized renderer");
+        timer.log("Initialized renderer");
     }
 
     private static final BitmapFactory.Options NO_SCALING = new BitmapFactory.Options();
@@ -244,8 +245,7 @@ public class Renderer extends View {
             paths[1] = new Path();
             int stepSize = 1 << queryLevel;
 
-            int prevIdx = -1;
-            int pIdx, p2Idx = -1; // TODO can we get rid of pIdx and replace with idx?
+            int prevIdx = -1, p2Idx = -1;
             float p2x = 0, p2y = 0;
             int p2Surf = 0;
 
@@ -254,7 +254,6 @@ public class Renderer extends View {
 
                 if (prevIdx == -1 || idx - prevIdx > stepSize) {
                     // just entered screen, draw partial on-screen segment
-                    pIdx = idx;
                     float px = utmToTilePixelX(points.x[idx], utx0, tileSizeUtm);
                     float py = utmToTilePixelY(points.y[idx], uty0, tileSizeUtm);
 
@@ -266,20 +265,21 @@ public class Renderer extends View {
                     paths[points.surface[p0Idx].ordinal()].lineTo(px, py);
 
                     // start next surface type segment
-                    paths[points.surface[idx].ordinal()].moveTo(px, py);
+                    p2Surf = points.surface[idx].ordinal();
+                    paths[p2Surf].moveTo(px, py);
                 } else {
                     // same point as previous "next"; don't calculate again; move if surface changed
-                    pIdx = p2Idx;
                     int pSurf = points.surface[p2Idx].ordinal();
-                    if (pSurf != p2Surf)
+                    if (pSurf != p2Surf) {
                         paths[pSurf].moveTo(p2x, p2y);
+                        p2Surf = pSurf;
+                    }
                 }
 
                 // draw line to the next point (which may or may not be on screen)
                 p2Idx = Math.min(idx + stepSize, points.nrPoints - 1);
                 p2x = utmToTilePixelX(points.x[p2Idx], utx0, tileSizeUtm);
                 p2y = utmToTilePixelY(points.y[p2Idx], uty0, tileSizeUtm);
-                p2Surf = points.surface[pIdx].ordinal();
                 paths[p2Surf].lineTo(p2x, p2y);
 
                 prevIdx = idx;
@@ -430,7 +430,7 @@ public class Renderer extends View {
     @Override
     synchronized public void onDraw(Canvas canvas) {
 //        startLog();
-        long t0 = time();
+        long t0 = LogStats.time();
 
         // calculate utm coordinates for screen corners
         int utm0x = (int)Math.floor(centerUtmX-pixelToUtm(getWidth()/2-1));
@@ -469,7 +469,7 @@ public class Renderer extends View {
 
 //        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
 
-        long time = time();
+        long time = LogStats.time();
         if (prevOnDraw != -1) {
             long dif0 = time - t0;
             long dif = time - prevOnDraw;
@@ -502,15 +502,12 @@ public class Renderer extends View {
     }
     void startLog() {
         stats.clear();
-        lastTime = time();
+        lastTime = LogStats.time();
     }
     void log(String event) {
-        long curTime = time();
+        long curTime = LogStats.time();
         stats.add(new Statistic(event, curTime - lastTime));
         lastTime = curTime;
-    }
-    long time() {
-        return SystemClock.uptimeMillis();
     }
 
     private void drawStats(Canvas canvas) {
@@ -524,7 +521,7 @@ public class Renderer extends View {
         return Math.log(d)/Math.log(2);
     }
 
-    private static final int MAX_QUAD_TREE_MATCHES = 65536;
+    private static final int MAX_QUAD_TREE_MATCHES = 4096;
     public static class QuadMatches {
         private int[] matchIdx = new int[MAX_QUAD_TREE_MATCHES];
         public int matchCount;
