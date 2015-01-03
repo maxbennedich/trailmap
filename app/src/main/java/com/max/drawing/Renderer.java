@@ -523,7 +523,7 @@ public class Renderer extends View {
         return Math.log(d)/Math.log(2);
     }
 
-    private static final int MAX_QUAD_TREE_MATCHES = 4096;
+    private static final int MAX_QUAD_TREE_MATCHES = 65536;
     public static class QuadMatches {
         private int[] matchIdx = new int[MAX_QUAD_TREE_MATCHES];
         public int matchCount;
