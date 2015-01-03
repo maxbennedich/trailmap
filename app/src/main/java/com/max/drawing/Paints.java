@@ -29,7 +29,7 @@ public class Paints {
 
     public static final int HISTORY_WIDTH = 4;
 
-    public static final Paint HISTORY_PATH = pb().color(0xff0000ff).strokeWidth(HISTORY_WIDTH).antialias().get();
+    public static final Paint HISTORY_PATH = pb().color(0xff0000ff).stroke(HISTORY_WIDTH).antialias().get();
 
     public static final Paint CONFIG_DIVIDER = pb().color(0xff3f3f3f).strokeWidth(2).get();
 

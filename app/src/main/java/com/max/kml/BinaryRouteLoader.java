@@ -1,7 +1,7 @@
 package com.max.kml;
 
 import com.max.route.QuadPointArray;
-import com.max.route.RoadSurface;
+import com.max.route.PathType;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
@@ -15,9 +15,9 @@ public class BinaryRouteLoader {
             int pointCount = dis.readInt();
             int[] x = new int[pointCount];
             int[] y = new int[pointCount];
-            RoadSurface[] surface = new RoadSurface[pointCount];
+            PathType[] surface = new PathType[pointCount];
             for (int n = 0; n < pointCount; ++n) {
-                surface[n] = RoadSurface.values()[dis.readByte()];
+                surface[n] = PathType.values()[dis.readByte()];
                 x[n] = dis.readInt();
                 y[n] = dis.readInt();
             }

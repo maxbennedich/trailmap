@@ -3,7 +3,7 @@ package com.max.kml;
 import com.max.latlng.LatLngHelper;
 import com.max.logic.XY;
 import com.max.route.PointOfInterest;
-import com.max.route.RoadSurface;
+import com.max.route.PathType;
 import com.max.route.Route;
 import com.max.route.RouteSegment;
 
@@ -30,7 +30,7 @@ public class KMLRouteLoader {
         NodeList placemarks = doc.getElementsByTagName("Placemark");
         for (int k = 0; k < placemarks.getLength(); k++) {
             String name = null;
-            RoadSurface roadSurface = null;
+            PathType pathType = null;
             List<XY> segment = null;
             XY poi = null;
 
@@ -44,8 +44,8 @@ public class KMLRouteLoader {
                     } else if ("styleUrl".equals(element.getTagName())) {
                         String style = element.getTextContent().trim();
                         switch (style) {
-                            case "#Paved" : roadSurface = RoadSurface.PAVED; break;
-                            case "#Dirt" : roadSurface = RoadSurface.DIRT; break;
+                            case "#Paved" : pathType = PathType.MAJOR_ROAD; break;
+                            case "#Dirt" : pathType = PathType.MINOR_ROAD; break;
                             case "#marker" : break;
                             default : throw new InvalidKMLException("Unknown style '" + style + "'");
                         }
@@ -61,9 +61,9 @@ public class KMLRouteLoader {
             if ((segment == null && poi == null) || (segment != null && poi != null))
                 throw new InvalidKMLException("Expected one (and only one) Point or LineString in Placemark '" + name + "'");
             if (segment != null) {
-                if (roadSurface == null)
-                    throw new InvalidKMLException("Missing road surface for segment '" + name + "'");
-                segments.add(new RouteSegment(name, roadSurface, segment));
+                if (pathType == null)
+                    throw new InvalidKMLException("Missing path type for segment '" + name + "'");
+                segments.add(new RouteSegment(name, pathType, segment));
             } else {
                 System.out.println(poi);
                 pois.add(new PointOfInterest(name, poi.x, poi.y));

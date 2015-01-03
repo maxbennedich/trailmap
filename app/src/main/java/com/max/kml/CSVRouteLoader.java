@@ -2,7 +2,7 @@ package com.max.kml;
 
 import com.max.logic.XY;
 import com.max.route.PointOfInterest;
-import com.max.route.RoadSurface;
+import com.max.route.PathType;
 import com.max.route.Route;
 import com.max.route.RouteSegment;
 
@@ -32,14 +32,14 @@ public class CSVRouteLoader {
                 if (surface != lastSurface) {
                     // new segment
                     if (!points.isEmpty()) {
-                        segments.add(new RouteSegment("", RoadSurface.values()[lastSurface], points));
+                        segments.add(new RouteSegment("", PathType.values()[lastSurface], points));
                         points = new ArrayList<>();
                     }
                     lastSurface = surface;
                 }
                 points.add(new XY(x, y));
             }
-            segments.add(new RouteSegment("", RoadSurface.values()[lastSurface], points));
+            segments.add(new RouteSegment("", PathType.values()[lastSurface], points));
 
             br.close();
         } catch (IOException ioe) {

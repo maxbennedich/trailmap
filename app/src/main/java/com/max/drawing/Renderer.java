@@ -19,6 +19,7 @@ import com.max.logic.Tile;
 import com.max.config.Config;
 import com.max.main.LogStats;
 import com.max.main.R;
+import com.max.route.PathType;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
@@ -28,9 +29,11 @@ import java.io.InputStream;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -188,9 +191,9 @@ public class Renderer extends View {
             }
 
             if (config.showRoute.value)
-                drawPath(tile.canvas, tile);
+                drawPath(points, quadRoot, true, Paints.PATH_WIDTH, tile.canvas, tile);
             if (config.showGpsTrace.value)
-                drawHistory(tile.canvas, tile);
+                drawPath(historyPoints, historyQuadTree, false, Paints.HISTORY_WIDTH, tile.canvas, tile);
             if (config.showPointsOfInterest.value)
                 drawPointsOfInterest(tile.canvas, tile);
 
@@ -219,7 +222,12 @@ public class Renderer extends View {
 
     QuadMatches matches = new QuadMatches();
 
-    private void drawPath(Canvas canvas, Tile tile) {
+    // instance level to avoid re-instantiating for each call to drawPath
+    boolean[] pathTypesUsed = new boolean[PathType.values().length];
+    Path[] paths = new Path[PathType.values().length];
+    { for (int n = 0; n < PathType.values().length; ++n) paths[n] = new Path(); }
+
+    private void drawPath(QuadPointArray pathPoints, QuadNode pathQuadTree, boolean cyclic, int pathWidth, Canvas canvas, Tile tile) {
         // TODO try arcs instead of lines
 
         // calculate utm coordinates for tile corners
@@ -230,78 +238,73 @@ public class Renderer extends View {
 
         // find route points visible on tile by querying quad tree
         matches.clear();
-        int pathWidthOffset = Paints.PATH_WIDTH << tileSizeBits - TILE_WIDTH_BITS;
+        int pathWidthOffset = pathWidth << tileSizeBits - TILE_WIDTH_BITS;
         int queryUtx0 = utx0 - pathWidthOffset/2;
         int queryUty0 = uty0 - pathWidthOffset/2;
-        byte queryLevel = (byte)(16-log2(scaleFactor)*1.5);
-        queryLevel = (byte)Math.min(10, Math.max(0, queryLevel));
-        quadRoot.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSizeUtm+pathWidthOffset, queryUty0+tileSizeUtm+pathWidthOffset, points, matches);
+//        int queryLevel = (int)(16-tile.zoomLevel*1.5);
+        int queryLevel = 10 - tile.zoomLevel; // TODO look over this
+        queryLevel = Math.min(10, Math.max(0, queryLevel));
+        pathQuadTree.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSizeUtm+pathWidthOffset, queryUty0+tileSizeUtm+pathWidthOffset, pathPoints, matches);
+        Log.d("OptiMap", "XYZ Got " + matches.matchCount + " matches");
 
         if (matches.matchCount != 0) {
             matches.sort();
 
-            Path[] paths = new Path[2];
-            paths[0] = new Path();
-            paths[1] = new Path();
             int stepSize = 1 << queryLevel;
 
             int prevIdx = -1, p2Idx = -1;
             float p2x = 0, p2y = 0;
-            int p2Surf = 0;
+            int p2Type = 0;
 
             for (int k = 0; k < matches.matchCount; ++k) {
                 int idx = matches.get(k);
 
                 if (prevIdx == -1 || idx - prevIdx > stepSize) {
-                    // just entered screen, draw partial on-screen segment
-                    float px = utmToTilePixelX(points.x[idx], utx0, tileSizeUtm);
-                    float py = utmToTilePixelY(points.y[idx], uty0, tileSizeUtm);
+                    // first point, or just entered screen, draw partial on-screen segment
+                    float px = utmToTilePixelX(pathPoints.x[idx], utx0, tileSizeUtm);
+                    float py = utmToTilePixelY(pathPoints.y[idx], uty0, tileSizeUtm);
 
-                    // the math below for idx=0 is to select the last point for the current query level
-                    int p0Idx = idx == 0 ? ((points.nrPoints - 1) / stepSize) * stepSize : idx - stepSize;
-                    float p0x = utmToTilePixelX(points.x[p0Idx], utx0, tileSizeUtm);
-                    float p0y = utmToTilePixelY(points.y[p0Idx], uty0, tileSizeUtm);
-                    paths[points.surface[p0Idx].ordinal()].moveTo(p0x, p0y);
-                    paths[points.surface[p0Idx].ordinal()].lineTo(px, py);
+                    if (idx != 0 || cyclic) {
+                        // the math below for idx=0 is to select the last point for the current query level
+                        // TODO won't this draw the last segment twice for cyclical routes when both the last and first point are visible?
+                        // --> might check if point is visible on tile, or perhaps better set a flag and don't draw the final segment
+                        int p0Idx = idx == 0 ? ((pathPoints.nrPoints - 1) / stepSize) * stepSize : idx - stepSize;
+                        float p0x = utmToTilePixelX(pathPoints.x[p0Idx], utx0, tileSizeUtm);
+                        float p0y = utmToTilePixelY(pathPoints.y[p0Idx], uty0, tileSizeUtm);
+                        int p0Type = pathPoints.pathType[p0Idx].ordinal();
+                        paths[p0Type].moveTo(p0x, p0y);
+                        paths[p0Type].lineTo(px, py);
+                        pathTypesUsed[p0Type] = true;
+                    }
 
-                    // start next surface type segment
-                    p2Surf = points.surface[idx].ordinal();
-                    paths[p2Surf].moveTo(px, py);
+                    // start next path type segment
+                    p2Type = pathPoints.pathType[idx].ordinal();
+                    paths[p2Type].moveTo(px, py);
                 } else {
-                    // same point as previous "next"; don't calculate again; move if surface changed
-                    int pSurf = points.surface[p2Idx].ordinal();
-                    if (pSurf != p2Surf) {
-                        paths[pSurf].moveTo(p2x, p2y);
-                        p2Surf = pSurf;
+                    // same point as previous "next"; don't calculate again; move if path type changed
+                    int pType = pathPoints.pathType[p2Idx].ordinal();
+                    if (pType != p2Type) {
+                        p2Type = pType;
+                        paths[p2Type].moveTo(p2x, p2y);
                     }
                 }
 
                 // draw line to the next point (which may or may not be on screen)
-                p2Idx = Math.min(idx + stepSize, points.nrPoints - 1);
-                p2x = utmToTilePixelX(points.x[p2Idx], utx0, tileSizeUtm);
-                p2y = utmToTilePixelY(points.y[p2Idx], uty0, tileSizeUtm);
-                paths[p2Surf].lineTo(p2x, p2y);
+                p2Idx = Math.min(idx + stepSize, pathPoints.nrPoints - 1);
+                p2x = utmToTilePixelX(pathPoints.x[p2Idx], utx0, tileSizeUtm);
+                p2y = utmToTilePixelY(pathPoints.y[p2Idx], uty0, tileSizeUtm);
+                paths[p2Type].lineTo(p2x, p2y);
+                pathTypesUsed[p2Type] = true;
 
                 prevIdx = idx;
             }
-            canvas.drawPath(paths[0], Paints.PATH_MAJOR_ROAD);
-            canvas.drawPath(paths[1], Paints.PATH_MINOR_ROAD);
-        }
-    }
 
-    private void drawHistory(Canvas canvas, Tile tile) {
-        // calculate utm coordinates for tile corners
-        int tileSizeBits = 20 - tile.zoomLevel;
-        int tileSizeUtm = 1 << tileSizeBits;
-        int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
-        int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
-
-        // TODO insert into quad tree
-        for (int k = 0; k < historyIdx; ++k) {
-            float x = utmToTilePixelX(historyUtmX[k], utx0, tileSizeUtm);
-            float y = utmToTilePixelY(historyUtmY[k], uty0, tileSizeUtm);
-            if (x >= -Paints.HISTORY_WIDTH/2 && x < tileSizeUtm+Paints.HISTORY_WIDTH/2 && y >= -Paints.HISTORY_WIDTH/2 && y < tileSizeUtm+Paints.HISTORY_WIDTH/2) {
-                canvas.drawPoint(x, y, Paints.HISTORY_PATH);
+            for (int n = 0; n < PathType.values().length; ++n) {
+                if (pathTypesUsed[n]) {
+                    canvas.drawPath(paths[n], PathType.values()[n].paint);
+                    paths[n].reset();
+                    pathTypesUsed[n] = false;
+                }
             }
         }
     }
@@ -347,15 +350,15 @@ public class Renderer extends View {
     }
 
     final double utmToScreenY(int utmy) {
-        return getHeight()/2-1 - utmToPixel(utmy-centerUtmY);
+        return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
     }
 
     /** Minimum distance (squared), in meters, between two consecutive GPS history points. */
     private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
-    private static final int MAX_HISTORY_POINTS = 1000;
-    private int[] historyUtmX = new int[MAX_HISTORY_POINTS];
-    private int[] historyUtmY = new int[MAX_HISTORY_POINTS];
-    private int historyIdx = 0;
+
+    private final QuadPointArray historyPoints = new QuadPointArray(1024);
+    private final QuadNode historyQuadTree = new QuadNode(MapConstants.UTM_X0, MapConstants.UTM_Y0,
+            MapConstants.UTM_X1, MapConstants.UTM_Y1);
 
     public void setGPSCoordinate(double utmX, double utmY) {
         gpsX = utmX;
@@ -366,19 +369,31 @@ public class Renderer extends View {
             int utmIY = (int) (utmY + 0.5);
 
             boolean addToHistory = true;
+            int historyIdx = historyPoints.nrPoints;
             if (historyIdx > 0) {
-                int difX = utmIX - historyUtmX[historyIdx - 1];
-                int difY = utmIY - historyUtmY[historyIdx - 1];
+                int difX = utmIX - historyPoints.x[historyIdx-1];
+                int difY = utmIY - historyPoints.y[historyIdx-1];
                 addToHistory = difX * difX + difY * difY >= MIN_HISTORY_POINT_DIST2;
             }
 
             if (addToHistory) {
-                historyUtmX[historyIdx] = utmIX;
-                historyUtmY[historyIdx] = utmIY;
+                historyPoints.add(utmIX, utmIY, PathType.HISTORY);
+                historyQuadTree.insertPoint(historyIdx, historyPoints);
 
                 if (historyIdx > 0) {
-                    // draw new point on cached tiles (of all zoom levels)
-                    for (int zoom = MIN_ZOOM_LEVEL; zoom <= MAX_ZOOM_LEVEL; ++zoom) {
+                    // draw new point on all already cached tiles (since they won't get re-computed
+                    // when drawn); draw for all zoom levels up until the level of the point added,
+                    // to ensure paths are consistent when they are re-computed (in the tile
+                    // loading code)
+                    int idxLevel = QuadNode.level(historyIdx);
+
+                    for (int zoom = MAX_ZOOM_LEVEL; zoom >= MIN_ZOOM_LEVEL; --zoom) {
+                        int queryLevel = 10 - zoom; // TODO look over this; also see above in tile loading code
+                        queryLevel = Math.min(10, Math.max(0, queryLevel));
+                        if (idxLevel < queryLevel)
+                            break;
+                        int stepSize = 1 << queryLevel;
+
                         int tileSizeBits = 20 - zoom;
                         int tileSizeUtm = 1 << tileSizeBits;
                         int tx = 1_200_000 + utmIX >> tileSizeBits;
@@ -389,8 +404,8 @@ public class Renderer extends View {
                         float tilePixelX1 = utmToTilePixelX(utmIX, tileUtmX, tileSizeUtm);
                         float tilePixelY1 = utmToTilePixelY(utmIY, tileUtmY, tileSizeUtm);
 
-                        float tilePixelX0 = utmToTilePixelX(historyUtmX[historyIdx-1], tileUtmX, tileSizeUtm);
-                        float tilePixelY0 = utmToTilePixelY(historyUtmY[historyIdx-1], tileUtmY, tileSizeUtm);
+                        float tilePixelX0 = utmToTilePixelX(historyPoints.x[historyIdx-stepSize], tileUtmX, tileSizeUtm);
+                        float tilePixelY0 = utmToTilePixelY(historyPoints.y[historyIdx-stepSize], tileUtmY, tileSizeUtm);
 
                         // Calculate first and last tile in each dimension that should be painted
                         // by the line from the previous point to the new point. This is needed
@@ -403,8 +418,9 @@ public class Renderer extends View {
 
                         for (int tyDif = tyDif0; tyDif <= tyDif1; ++tyDif) {
                             for (int txDif = txDif0; txDif <= txDif1; ++txDif) {
-                                Tile tile = tileCache.get(getTilePos(zoom, tx+txDif, ty+tyDif));
-                                if (tile != null) {
+                                int tilePos = getTilePos(zoom, tx+txDif, ty+tyDif);
+                                if (tileCache.containsKey(tilePos)) { // only already cached tiles!
+                                    Tile tile = tileCache.get(tilePos);
                                     float px0 = tilePixelX0 - (txDif<<TILE_WIDTH_BITS);
                                     float py0 = tilePixelY0 - (tyDif<<TILE_WIDTH_BITS);
                                     float px1 = tilePixelX1 - (txDif<<TILE_WIDTH_BITS);
@@ -415,8 +431,6 @@ public class Renderer extends View {
                         }
                     }
                 }
-
-                historyIdx = (historyIdx + 1) % MAX_HISTORY_POINTS;
             }
         }
     }
@@ -517,11 +531,11 @@ public class Renderer extends View {
         }
     }
 
-    private static double log2(double d) {
+    private static final double log2(double d) {
         return Math.log(d)/Math.log(2);
     }
 
-    private static final int MAX_QUAD_TREE_MATCHES = 4096;
+    private static final int MAX_QUAD_TREE_MATCHES = 2048;
     public static class QuadMatches {
         private int[] matchIdx = new int[MAX_QUAD_TREE_MATCHES];
         public int matchCount;
@@ -529,7 +543,16 @@ public class Renderer extends View {
         public void clear() {
             matchCount = 0;
         }
-        public void add(int idx) { matchIdx[matchCount++] = idx; }
+        public void add(int idx) {
+            if (matchCount == matchIdx.length) {
+                // array full, double it in size
+                int[] newArray = new int[matchCount << 1];
+                System.arraycopy(matchIdx, 0, newArray, 0, matchCount);
+                matchIdx = newArray;
+            }
+
+            matchIdx[matchCount++] = idx;
+        }
         public int get(int idx) {
             return matchIdx[idx];
         }

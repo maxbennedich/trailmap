@@ -188,8 +188,8 @@ public class Controller extends Activity {
             super.onLocationChanged(location);
 
             // TODO use nanos, not getTime
-            Log.d("OptiMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
-                    location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.hasBearing(), location.getAccuracy(), location.getTime()));
+//            Log.d("OptiMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
+//                    location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.hasBearing(), location.getAccuracy(), location.getTime()));
             XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
             renderer.setGPSCoordinate(xy.x, xy.y);
             if (location.hasBearing())
