@@ -2,6 +2,8 @@ package com.max.drawing;
 
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 
 public class Paints {
 
@@ -24,24 +26,28 @@ public class Paints {
 
     public static final int PATH_WIDTH = 6;
 
-    public static final Paint PATH_MAJOR_ROAD = pb().color(0x6fff0000).stroke(PATH_WIDTH).antialias().get();
-    public static final Paint PATH_MINOR_ROAD = pb().color(0x6fff6f00).stroke(PATH_WIDTH).antialias().get();
+    public static final Paint PATH_MAJOR_ROAD = pb().color(0x7fff0000).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
+    public static final Paint PATH_MINOR_ROAD = pb().color(0x7fff7f00).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
 
     public static final int HISTORY_WIDTH = 4;
 
-    public static final Paint HISTORY_PATH = pb().color(0xff0000ff).stroke(HISTORY_WIDTH).antialias().get();
+    public static final Paint HISTORY_PATH = pb().color(0xff0000ff).stroke(HISTORY_WIDTH).round().antialias().get();
 
     public static final Paint CONFIG_DIVIDER = pb().color(0xff3f3f3f).strokeWidth(2).get();
 
-    static PaintBuilder pb() { return new PaintBuilder(); }
+    public static PaintBuilder pb() { return new PaintBuilder(); }
 
     static class PaintBuilder {
+        private static final PorterDuffXfermode DST_ATOP = new PorterDuffXfermode(PorterDuff.Mode.DST_ATOP);
+
         Paint p;
         PaintBuilder() { p = new Paint(); }
         PaintBuilder color(int color) { p.setColor(color); return this; }
         PaintBuilder textSize(float textSize) { p.setTextSize(textSize); return this; }
         PaintBuilder stroke(float width) { p.setStyle(Paint.Style.STROKE); return strokeWidth(width); }
         PaintBuilder strokeWidth(float width) { p.setStrokeWidth(width); return this; }
+        PaintBuilder round() { p.setStrokeCap(Paint.Cap.ROUND); return this; }
+        PaintBuilder dstAtop() { p.setXfermode(DST_ATOP); return this; }
         PaintBuilder antialias() { p.setAntiAlias(true); return this; }
         Paint get() { return p; }
     }

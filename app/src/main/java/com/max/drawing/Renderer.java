@@ -5,9 +5,15 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.MaskFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.os.SystemClock;
 import android.util.AttributeSet;
@@ -48,7 +54,8 @@ public class Renderer extends View {
 
     public List<PointOfInterest> pointsOfInterest;
 
-    private Bitmap emptyTile, gpsIcon, scale;
+    private Bitmap emptyTile, gpsIcon, scale, layerBitmap;
+    private Canvas layerCanvas;
 
     private LinkedHashMap<Integer, Tile> tileCache = getTileCache();
 
@@ -130,6 +137,10 @@ public class Renderer extends View {
         gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
         scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
         emptyTile = BitmapFactory.decodeResource(getResources(), R.drawable.empty, NO_SCALING);
+
+        layerBitmap = Bitmap.createBitmap(TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS, Bitmap.Config.ARGB_8888);
+        layerBitmap.setDensity(emptyTile.getDensity());
+        layerCanvas = new Canvas(layerBitmap);
     }
 
     /** Populate the structure of available tiles. */
@@ -184,19 +195,25 @@ public class Renderer extends View {
 
             Tile tile = new Tile(zoom, tx, ty, map);
 
-            if (config.mapBrightness.value != 100) {
-                // dim tile
-                Paint p = Paints.DIM_SCREEN;
-                p.setAlpha(255 - (255 * config.mapBrightness.value / 100));
-                tile.canvas.drawRect(0, 0, getWidth(), getHeight(), p);
-            }
+            // dim tile
+            if (config.mapBrightness.value != 100)
+                tile.canvas.drawColor(255 - (255 * config.mapBrightness.value / 100) << 24);
 
-            if (config.showRoute.value)
-                drawPath(points, quadRoot, ROUTE_PATH, tile.canvas, tile);
-            if (config.showGpsTrace.value)
-                drawPath(historyPoints, historyQuadTree, GPS_PATH, tile.canvas, tile);
-            if (config.showPointsOfInterest.value)
-                drawPointsOfInterest(tile.canvas, tile);
+            boolean anyLayerPresent = config.showRoute.value || config.showGpsTrace.value || config.showPointsOfInterest.value;
+            if (anyLayerPresent) {
+                // clear left-overs from last tile (re-using the same bitmap/canvas)
+                layerCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+
+                if (config.showRoute.value)
+                    drawPath(points, quadRoot, ROUTE_PATH, layerCanvas, tile);
+                if (config.showGpsTrace.value)
+                    drawPath(historyPoints, historyQuadTree, GPS_PATH, layerCanvas, tile);
+                if (config.showPointsOfInterest.value)
+                    drawPointsOfInterest(layerCanvas, tile);
+
+                // finally blit layers on top of tile
+                tile.canvas.drawBitmap(layerBitmap, 0, 0, null);
+            }
 
             return tile;
         }
@@ -356,6 +373,7 @@ public class Renderer extends View {
     private static final PathConfiguration ROUTE_PATH = new PathConfiguration(
             new PathLevelOfDetail(new int[] {11,10,9,8,7,7,6,5,4,3,0}), true, Paints.PATH_WIDTH);
 
+    // level of detail configs below have been empirically tested to be visibly acceptable
     private static final PathConfiguration GPS_PATH = new PathConfiguration(
             new PathLevelOfDetail(new int[] {10,9,8,7,6,5,4,3,3,2,0}), false, Paints.HISTORY_WIDTH);
 
