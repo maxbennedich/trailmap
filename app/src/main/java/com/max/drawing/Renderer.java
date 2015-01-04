@@ -9,6 +9,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -19,6 +20,8 @@ import com.max.logic.Tile;
 import com.max.config.Config;
 import com.max.main.LogStats;
 import com.max.main.R;
+import com.max.route.PathConfiguration;
+import com.max.route.PathLevelOfDetail;
 import com.max.route.PathType;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
@@ -29,11 +32,9 @@ import java.io.InputStream;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -190,10 +191,15 @@ public class Renderer extends View {
                 tile.canvas.drawRect(0, 0, getWidth(), getHeight(), p);
             }
 
-            if (config.showRoute.value)
-                drawPath(points, quadRoot, true, Paints.PATH_WIDTH, tile.canvas, tile);
+            if (config.showRoute.value) {
+                long time = SystemClock.uptimeMillis();
+                LINES = 0;
+                drawPath(points, quadRoot, ROUTE_PATH, tile.canvas, tile);
+                time = SystemClock.uptimeMillis() - time;
+                Log.d("OptiMap", "matches drew " + LINES + " lines and took " + time + " ms");
+            }
             if (config.showGpsTrace.value)
-                drawPath(historyPoints, historyQuadTree, false, Paints.HISTORY_WIDTH, tile.canvas, tile);
+                drawPath(historyPoints, historyQuadTree, GPS_PATH, tile.canvas, tile);
             if (config.showPointsOfInterest.value)
                 drawPointsOfInterest(tile.canvas, tile);
 
@@ -201,6 +207,8 @@ public class Renderer extends View {
         }
         return null;
     }
+
+    static int LINES = 0;
 
     final float utmToTilePixelX(int utmx, int utmx0, int tileSizeUtm) {
         return (float)(utmx - utmx0)*TILE_WIDTH_PIXELS/tileSizeUtm;
@@ -227,7 +235,7 @@ public class Renderer extends View {
     Path[] paths = new Path[PathType.values().length];
     { for (int n = 0; n < PathType.values().length; ++n) paths[n] = new Path(); }
 
-    private void drawPath(QuadPointArray pathPoints, QuadNode pathQuadTree, boolean cyclic, int pathWidth, Canvas canvas, Tile tile) {
+    private void drawPath(QuadPointArray pathPoints, QuadNode pathQuadTree, PathConfiguration pathConfig, Canvas canvas, Tile tile) {
         // TODO try arcs instead of lines
 
         // calculate utm coordinates for tile corners
@@ -238,12 +246,10 @@ public class Renderer extends View {
 
         // find route points visible on tile by querying quad tree
         matches.clear();
-        int pathWidthOffset = pathWidth << tileSizeBits - TILE_WIDTH_BITS;
+        int pathWidthOffset = pathConfig.width << tileSizeBits - TILE_WIDTH_BITS;
         int queryUtx0 = utx0 - pathWidthOffset/2;
         int queryUty0 = uty0 - pathWidthOffset/2;
-//        int queryLevel = (int)(16-tile.zoomLevel*1.5);
-        int queryLevel = 10 - tile.zoomLevel; // TODO look over this
-        queryLevel = Math.min(10, Math.max(0, queryLevel));
+        int queryLevel = pathConfig.levelOfDetail.getQueryLevelByZoomLevel()[tile.zoomLevel];
         pathQuadTree.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSizeUtm+pathWidthOffset, queryUty0+tileSizeUtm+pathWidthOffset, pathPoints, matches);
         Log.d("OptiMap", "XYZ Got " + matches.matchCount + " matches");
 
@@ -264,7 +270,7 @@ public class Renderer extends View {
                     float px = utmToTilePixelX(pathPoints.x[idx], utx0, tileSizeUtm);
                     float py = utmToTilePixelY(pathPoints.y[idx], uty0, tileSizeUtm);
 
-                    if (idx != 0 || cyclic) {
+                    if (idx != 0 || pathConfig.cyclic) {
                         // the math below for idx=0 is to select the last point for the current query level
                         // TODO won't this draw the last segment twice for cyclical routes when both the last and first point are visible?
                         // --> might check if point is visible on tile, or perhaps better set a flag and don't draw the final segment
@@ -274,6 +280,7 @@ public class Renderer extends View {
                         int p0Type = pathPoints.pathType[p0Idx].ordinal();
                         paths[p0Type].moveTo(p0x, p0y);
                         paths[p0Type].lineTo(px, py);
+                        ++LINES;
                         pathTypesUsed[p0Type] = true;
                     }
 
@@ -294,6 +301,7 @@ public class Renderer extends View {
                 p2x = utmToTilePixelX(pathPoints.x[p2Idx], utx0, tileSizeUtm);
                 p2y = utmToTilePixelY(pathPoints.y[p2Idx], uty0, tileSizeUtm);
                 paths[p2Type].lineTo(p2x, p2y);
+                ++LINES;
                 pathTypesUsed[p2Type] = true;
 
                 prevIdx = idx;
@@ -353,6 +361,13 @@ public class Renderer extends View {
         return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
     }
 
+    // level of detail configs below have been empirically tested to be visibly acceptable
+    private static final PathConfiguration ROUTE_PATH = new PathConfiguration(
+            new PathLevelOfDetail(new int[] {11,10,9,8,7,7,6,5,4,3,0}), true, Paints.PATH_WIDTH);
+
+    private static final PathConfiguration GPS_PATH = new PathConfiguration(
+            new PathLevelOfDetail(new int[] {10,9,8,7,6,5,4,3,3,2,0}), false, Paints.HISTORY_WIDTH);
+
     /** Minimum distance (squared), in meters, between two consecutive GPS history points. */
     private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
 
@@ -386,13 +401,10 @@ public class Renderer extends View {
                     // to ensure paths are consistent when they are re-computed (in the tile
                     // loading code)
                     int idxLevel = QuadNode.level(historyIdx);
+                    int minZoom = GPS_PATH.levelOfDetail.getZoomLevelByQueryLevel()[idxLevel];
 
-                    for (int zoom = MAX_ZOOM_LEVEL; zoom >= MIN_ZOOM_LEVEL; --zoom) {
-                        int queryLevel = 10 - zoom; // TODO look over this; also see above in tile loading code
-                        queryLevel = Math.min(10, Math.max(0, queryLevel));
-                        if (idxLevel < queryLevel)
-                            break;
-                        int stepSize = 1 << queryLevel;
+                    for (int zoom = MAX_ZOOM_LEVEL; zoom >= minZoom; --zoom) {
+                        int stepSize = 1 << GPS_PATH.levelOfDetail.getQueryLevelByZoomLevel()[zoom];
 
                         int tileSizeBits = 20 - zoom;
                         int tileSizeUtm = 1 << tileSizeBits;

@@ -58,6 +58,7 @@ public class QuadNode implements Serializable {
         this.y1 = y1;
     }
 
+    /** @return Level ranging from 0 - 32 (Integer.SIZE). */
     public static final int level(int idx) {
         return Integer.numberOfTrailingZeros(idx);
     }
