@@ -369,6 +369,14 @@ public class Renderer extends View {
         return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
     }
 
+    final double utmToScreenX(double utmx) {
+        return getWidth()/2-1 + utmToPixel(utmx - centerUtmX);
+    }
+
+    final double utmToScreenY(double utmy) {
+        return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
+    }
+
     // level of detail configs below have been empirically tested to be visibly acceptable
     private static final PathConfiguration ROUTE_PATH = new PathConfiguration(
             new PathLevelOfDetail(new int[] {11,10,9,8,7,7,6,5,4,3,0}), true, Paints.PATH_WIDTH);
@@ -636,8 +644,8 @@ public class Renderer extends View {
     private Matrix matrix = new Matrix(); // to not have to constantly reallocate
 
     private void drawGPSMarker(Canvas canvas) {
-        double x = utmToScreenX((int)(gpsX+0.5));
-        double y = utmToScreenY((int)(gpsY+0.5));
+        double x = utmToScreenX(gpsX);
+        double y = utmToScreenY(gpsY);
         matrix.reset();
         matrix.postRotate(gpsBearing, gpsIcon.getWidth()/2, gpsIcon.getHeight()/2);
         matrix.postTranslate((float)(x-gpsIcon.getWidth()/2), (float)(y-gpsIcon.getHeight()/2));
