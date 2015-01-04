@@ -191,13 +191,8 @@ public class Renderer extends View {
                 tile.canvas.drawRect(0, 0, getWidth(), getHeight(), p);
             }
 
-            if (config.showRoute.value) {
-                long time = SystemClock.uptimeMillis();
-                LINES = 0;
+            if (config.showRoute.value)
                 drawPath(points, quadRoot, ROUTE_PATH, tile.canvas, tile);
-                time = SystemClock.uptimeMillis() - time;
-                Log.d("OptiMap", "matches drew " + LINES + " lines and took " + time + " ms");
-            }
             if (config.showGpsTrace.value)
                 drawPath(historyPoints, historyQuadTree, GPS_PATH, tile.canvas, tile);
             if (config.showPointsOfInterest.value)
@@ -207,8 +202,6 @@ public class Renderer extends View {
         }
         return null;
     }
-
-    static int LINES = 0;
 
     final float utmToTilePixelX(int utmx, int utmx0, int tileSizeUtm) {
         return (float)(utmx - utmx0)*TILE_WIDTH_PIXELS/tileSizeUtm;
@@ -280,7 +273,6 @@ public class Renderer extends View {
                         int p0Type = pathPoints.pathType[p0Idx].ordinal();
                         paths[p0Type].moveTo(p0x, p0y);
                         paths[p0Type].lineTo(px, py);
-                        ++LINES;
                         pathTypesUsed[p0Type] = true;
                     }
 
@@ -301,7 +293,6 @@ public class Renderer extends View {
                 p2x = utmToTilePixelX(pathPoints.x[p2Idx], utx0, tileSizeUtm);
                 p2y = utmToTilePixelY(pathPoints.y[p2Idx], uty0, tileSizeUtm);
                 paths[p2Type].lineTo(p2x, p2y);
-                ++LINES;
                 pathTypesUsed[p2Type] = true;
 
                 prevIdx = idx;
