@@ -242,7 +242,7 @@ public class Renderer extends View {
         int pathWidthOffset = pathConfig.width << tileSizeBits - TILE_WIDTH_BITS;
         int queryUtx0 = utx0 - pathWidthOffset/2;
         int queryUty0 = uty0 - pathWidthOffset/2;
-        int queryLevel = pathConfig.levelOfDetail.getQueryLevelByZoomLevel()[tile.zoomLevel];
+        int queryLevel = pathConfig.levelOfDetail.queryLevelByZoomLevel[tile.zoomLevel];
         pathQuadTree.queryTree(queryLevel, queryUtx0, queryUty0, queryUtx0+tileSizeUtm+pathWidthOffset, queryUty0+tileSizeUtm+pathWidthOffset, pathPoints, matches);
         Log.d("OptiMap", "XYZ Got " + matches.matchCount + " matches");
 
@@ -359,7 +359,10 @@ public class Renderer extends View {
     private static final PathConfiguration GPS_PATH = new PathConfiguration(
             new PathLevelOfDetail(new int[] {10,9,8,7,6,5,4,3,3,2,0}), false, Paints.HISTORY_WIDTH);
 
-    /** Minimum distance (squared), in meters, between two consecutive GPS history points. */
+    /**
+     * Minimum distance (squared), in meters, between two consecutive GPS history points.
+     * This is to not record too many points with unnecessary precision.
+     */
     private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
 
     private final QuadPointArray historyPoints = new QuadPointArray(1024);
@@ -392,10 +395,10 @@ public class Renderer extends View {
                     // to ensure paths are consistent when they are re-computed (in the tile
                     // loading code)
                     int idxLevel = QuadNode.level(historyIdx);
-                    int minZoom = GPS_PATH.levelOfDetail.getZoomLevelByQueryLevel()[idxLevel];
+                    int minZoom = GPS_PATH.levelOfDetail.zoomLevelByQueryLevel[idxLevel];
 
                     for (int zoom = MAX_ZOOM_LEVEL; zoom >= minZoom; --zoom) {
-                        int stepSize = 1 << GPS_PATH.levelOfDetail.getQueryLevelByZoomLevel()[zoom];
+                        int stepSize = 1 << GPS_PATH.levelOfDetail.queryLevelByZoomLevel[zoom];
 
                         int tileSizeBits = 20 - zoom;
                         int tileSizeUtm = 1 << tileSizeBits;
