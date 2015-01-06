@@ -3,6 +3,7 @@ package com.max.config;
 import android.content.Context;
 import android.support.v4.widget.DrawerLayout;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -14,13 +15,33 @@ public class CustomInterceptDrawerLayout extends DrawerLayout {
         super(context, attrs);
     }
 
+    /** Squared maximum pan distance to consider a click. TODO dpi instead of pixels */
+    private static final float CLICK_DIST2 = 60f;
+
+    private float touchStartX, touchStartY;
+
     @Override
     public boolean onInterceptTouchEvent(MotionEvent event) {
+        float ex = event.getX(), ey = event.getY();
+
         View drawerListView = findViewById(R.id.left_drawer);
         if(isDrawerOpen(drawerListView) || isDrawerVisible(drawerListView)) {
-            // allow moving around in the map while navigation drawer is open
-            if (event.getX() >= drawerListView.getWidth())
+            // Allow moving around in the map while navigation drawer is open, while still closing
+            // the drawer if the user single clicks (standard behavior).
+            if (ex >= drawerListView.getWidth()) {
+                int action = event.getAction() & MotionEvent.ACTION_MASK;
+                if (action == MotionEvent.ACTION_DOWN) {
+                    touchStartX = ex;
+                    touchStartY = ey;
+                } else if (action == MotionEvent.ACTION_UP) {
+                    float distMoved2 = (ex - touchStartX) * (ex - touchStartX) + (ey - touchStartY) * (ey - touchStartY);
+                    if (distMoved2 <= CLICK_DIST2) // pan movement short enough to consider a click
+                        closeDrawer(drawerListView);
+                }
+
+                // return false to not give parent drawer a chance to process the event
                 return false;
+            }
 
             // don't affect navigation drawer when using the seek bars
             if (Controller.globalSeekBar != null) {
@@ -31,7 +52,7 @@ public class CustomInterceptDrawerLayout extends DrawerLayout {
                 seekY0 = location[1] - Controller.globalSeekBar.getHeight() / 2;
                 seekX1 = seekX0 + Controller.globalSeekBar.getWidth();
                 seekY1 = seekY0 + Controller.globalSeekBar.getHeight();
-                if (event.getX() >= seekX0 && event.getX() < seekX1 && event.getY() >= seekY0 && event.getY() < seekY1)
+                if (ex >= seekX0 && ex < seekX1 && ey >= seekY0 && ey < seekY1)
                     return false;
             }
         }

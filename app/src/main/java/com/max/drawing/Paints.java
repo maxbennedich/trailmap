@@ -1,15 +1,10 @@
 package com.max.drawing;
 
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 
 public class Paints {
-
-    // TODO: is strokewidth used with fill paint?
-    /** Alpha needs to be added later. */
-    public static final Paint DIM_SCREEN = pb().color(0).strokeWidth(1).get();
 
     public static final int FONT_SIZE_POI = 20;
     public static final Paint FONT_POI = pb().color(0xffffffff).textSize(FONT_SIZE_POI).antialias().get();
@@ -18,6 +13,10 @@ public class Paints {
     public static final int FONT_SIZE_SCALE = 22;
     public static final Paint FONT_SCALE = pb().color(0xffffffff).textSize(FONT_SIZE_SCALE).antialias().get();
     public static final Paint FONT_OUTLINE_SCALE = pb().color(0xff000000).textSize(FONT_SIZE_SCALE).stroke(4).antialias().get();
+
+    public static final int FONT_SIZE_GPS_STATS = 96;
+    public static final Paint FONT_GPS_STATS = pb().color(0xffffffff).textSize(FONT_SIZE_GPS_STATS).antialias().get();
+    public static final Paint FONT_OUTLINE_GPS_STATS = pb().color(0xff000000).textSize(FONT_SIZE_GPS_STATS).stroke(8).antialias().get();
 
     public static final int POINT_OF_INTEREST_SIZE = 12;
 

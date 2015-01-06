@@ -10,6 +10,7 @@ import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -83,6 +84,10 @@ public class Renderer extends View {
 //    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
+    private float gpsSpeed;
+    private float gpsDist = 0;
+
+    private final Typeface fontAurora;
 
     private LinkedHashMap<Integer, Tile> getTileCache() {
         return new LinkedHashMap<Integer, Tile>(TILE_CACHE_SIZE, 0.75f, true) {
@@ -117,6 +122,15 @@ public class Renderer extends View {
 
         zoomDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
 
+        fontAurora = Typeface.createFromAsset(context.getAssets(), "fonts/aurora.otf");
+        Paints.FONT_OUTLINE_GPS_STATS.setTypeface(fontAurora);
+        Paints.FONT_GPS_STATS.setTypeface(fontAurora);
+
+        Paints.FONT_OUTLINE_SCALE.setTypeface(fontAurora);
+        Paints.FONT_SCALE.setTypeface(fontAurora);
+        Paints.FONT_OUTLINE_POI.setTypeface(fontAurora);
+        Paints.FONT_POI.setTypeface(fontAurora);
+
         loadBitmaps();
 
         inventoryTiles();
@@ -147,7 +161,7 @@ public class Renderer extends View {
         AssetManager assMan = getContext().getAssets();
         String[] assets;
         try {
-            assets = assMan.list("");
+            assets = assMan.list("tiles");
         } catch (IOException e) {
             throw new IllegalStateException("Error loading assets", e);
         }
@@ -183,7 +197,7 @@ public class Renderer extends View {
             Log.d("AccuMap", "Loading " + tileName);
             Bitmap map;
             try {
-                InputStream is = getContext().getAssets().open(tileName);
+                InputStream is = getContext().getAssets().open("tiles/" + tileName);
                 map = BitmapFactory.decodeStream(is, null, NO_SCALING);
                 is.close();
             } catch (IOException e) {
@@ -408,6 +422,9 @@ public class Renderer extends View {
             MapConstants.UTM_X1, MapConstants.UTM_Y1);
 
     public void setGPSCoordinate(double utmX, double utmY) {
+        // TODO more sophisticated method is needed, such as Kalman filter
+        gpsDist += Math.sqrt((utmX-gpsX)*(utmX-gpsX) + (utmY-gpsY)*(utmY-gpsY));
+
         gpsX = utmX;
         gpsY = utmY;
 
@@ -483,6 +500,10 @@ public class Renderer extends View {
         gpsBearing = bearing;
     }
 
+    public void setGPSSpeed(float speed) {
+        gpsSpeed = speed;
+    }
+
     long prevOnDraw = -1;
 
     @Override
@@ -522,8 +543,9 @@ public class Renderer extends View {
 
 //        log("Draw tiles");
 
-        drawScaleMarker(canvas);
         drawGPSMarker(canvas);
+        drawScaleMarker(canvas);
+        drawGPSStats(canvas);
 
 //        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
 
@@ -664,6 +686,16 @@ public class Renderer extends View {
         canvas.drawBitmap(gpsIcon, matrix, null);
     }
 
+    private void drawGPSStats(Canvas canvas) {
+        String txt = (int)(gpsSpeed * 3.6 + 0.5) + " km/h   "; // 3.6 for m/s -> km/h
+        if (gpsDist < 500) txt += (int)(gpsDist + 0.5) + " m";
+        else txt += String.format("%.2f km", gpsDist *0.001);
+        float wid = Paints.FONT_OUTLINE_GPS_STATS.measureText(txt) * 0.5f;
+        canvas.drawText(txt, (float)screenMidX-wid, Paints.FONT_SIZE_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+        canvas.drawText(txt, (float)screenMidX-wid, Paints.FONT_SIZE_GPS_STATS, Paints.FONT_GPS_STATS);
+
+    }
+
     private void copyTile(Canvas canvas, Bitmap src, float posX, float posY) {
         float size = (float)(TILE_WIDTH_PIXELS * scalingZoom);
         // note: need to use int rectangle here, since float will result in glitches between tiles
@@ -676,24 +708,24 @@ public class Renderer extends View {
 
     private ScaleGestureDetector zoomDetector;
     private ActionMode actionMode = ActionMode.NONE;
-    private double panStartX, panStartY;
+    private float panPrevX, panPrevY;
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getAction() & MotionEvent.ACTION_MASK) {
             case MotionEvent.ACTION_DOWN:
-                panStartX = event.getX();
-                panStartY = event.getY();
+                panPrevX = event.getX();
+                panPrevY = event.getY();
                 actionMode = ActionMode.PAN;
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (actionMode == ActionMode.PAN) {
-                    double dx = event.getX() - panStartX;
-                    double dy = event.getY() - panStartY;
+                    double dx = event.getX() - panPrevX;
+                    double dy = event.getY() - panPrevY;
                     centerUtmX -= pixelToUtm(dx);
                     centerUtmY += pixelToUtm(dy);
-                    panStartX = event.getX();
-                    panStartY = event.getY();
+                    panPrevX = event.getX();
+                    panPrevY = event.getY();
 
                     validateMapCenter();
 

@@ -2,6 +2,7 @@ package com.max.location;
 
 import android.location.Location;
 import android.os.Handler;
+import android.util.Log;
 
 import java.util.Random;
 
@@ -15,6 +16,15 @@ public class MockLocationService implements Runnable, PausableLocationService {
 
     private double lat, lng;
     private float bearing = 0;
+
+    /** Relative speed, between 0 and 1. Multiplied with speed factor. */
+    private float latLngSpd = 0.5f;
+
+    /** Max speed (added to lat/lng coordinates directly). */
+    private float latLngSpdFactor = 1e-5f;
+
+    /** Meters per second. */
+    private float speed = 0;
     private Random rnd = new Random(0);
 
     private Handler handler = new Handler();
@@ -36,6 +46,8 @@ public class MockLocationService implements Runnable, PausableLocationService {
         @Override public double getLongitude() { return lng; }
         @Override public boolean hasBearing() { return true; }
         @Override public float getBearing() { return bearing; }
+        @Override public boolean hasSpeed() { return true; }
+        @Override public float getSpeed() { return speed; }
         @Override public float getAccuracy() { return 0; }
         @Override public long getTime() { return 0; }
     };
@@ -51,10 +63,25 @@ public class MockLocationService implements Runnable, PausableLocationService {
             lng = locationListener.previousLocation.getLongitude();
         }
 
-        bearing += (rnd.nextDouble() - 0.5) * 30;
-        double speed = rnd.nextDouble() * 3e-4;
-        lat += speed * Math.cos(bearing * Math.PI / 180);
-        lng += speed * Math.sin(bearing * Math.PI / 180);
+        bearing += (rnd.nextDouble() - 0.5) * 15;
+
+        double r = rnd.nextDouble();
+        if (r > latLngSpd) latLngSpd = Math.min(1f, latLngSpd + 0.005f);
+        else latLngSpd = Math.max(0f, latLngSpd - 0.005f);
+        float move = latLngSpd * latLngSpdFactor;
+
+        double newLat = lat + move * Math.cos(bearing * Math.PI / 180);
+        double newLng = lng + move * Math.sin(bearing * Math.PI / 180);
+
+        // use simple equirectangular ("flat earth") approximation since we don't need exact numbers
+        double x = Math.toRadians(newLng - lng) * Math.cos(Math.toRadians(lat + newLat)/2);
+        double y = Math.toRadians(newLat - lat);
+        double dist = Math.sqrt(x*x + y*y) * 6371000;
+        speed = (float)(dist * 1000 / MOCK_LOCATION_UPDATE_INTERVAL_MS);
+
+        lat = newLat;
+        lng = newLng;
+
         locationListener.onLocationChanged(mockLocation);
 
         handler.postDelayed(this, MOCK_LOCATION_UPDATE_INTERVAL_MS);

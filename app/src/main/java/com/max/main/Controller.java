@@ -194,6 +194,8 @@ public class Controller extends Activity {
             renderer.setGPSCoordinate(xy.x, xy.y);
             if (location.hasBearing())
                 renderer.setGPSBearing(location.getBearing());
+            if (location.hasSpeed())
+                renderer.setGPSSpeed(location.getSpeed());
             renderer.invalidate();
         }
     };
