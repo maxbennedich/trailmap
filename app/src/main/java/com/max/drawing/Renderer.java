@@ -6,16 +6,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
-import android.graphics.MaskFilter;
 import android.graphics.Matrix;
-import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
-import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
-import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -61,6 +55,9 @@ public class Renderer extends View {
 
     private static final int MIN_ZOOM_LEVEL = 0;
     private static final int MAX_ZOOM_LEVEL = 10;
+
+    /** Log2 of tile utm size at zoom level 0. */
+    private static final int ZOOM_0_TILE_BITS = 20;
 
     private static final double MIN_SCALE = 1 << MIN_ZOOM_LEVEL;
     private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 3;
@@ -249,7 +246,7 @@ public class Renderer extends View {
         // TODO try arcs instead of lines
 
         // calculate utm coordinates for tile corners
-        int tileSizeBits = 20 - tile.zoomLevel;
+        int tileSizeBits = ZOOM_0_TILE_BITS - tile.zoomLevel;
         int tileSizeUtm = 1 << tileSizeBits;
         int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
         int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
@@ -327,7 +324,7 @@ public class Renderer extends View {
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
         // calculate utm coordinates for tile corners
-        int tileSizeBits = 20 - tile.zoomLevel;
+        int tileSizeBits = ZOOM_0_TILE_BITS - tile.zoomLevel;
         int tileSizeUtm = 1 << tileSizeBits;
         int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
         int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
@@ -353,28 +350,43 @@ public class Renderer extends View {
         }
     }
 
+    // view size related variables
+    private double minZoomFitsOnScreen;
+    private double screenMidX, screenMidY;
+
+    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        Log.d("OptiMap", "On size changed: "+w+","+h);
+        screenMidX = w * 0.5;
+        screenMidY = h * 0.5;
+
+        // calculate minimum zoom level that still covers the view fully
+        double minZoomX = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * w / (double)(MapConstants.UTM_X1 - MapConstants.UTM_X0);
+        double minZoomY = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * h / (double)(MapConstants.UTM_Y1 - MapConstants.UTM_Y0);
+        minZoomFitsOnScreen = Math.max(MIN_SCALE, Math.max(minZoomX, minZoomY));
+    }
+
     final int pixelToUtm(double pixel) {
-        return (int)(pixel*(1<<(20-zoomLevel-TILE_WIDTH_BITS)) / scalingZoom + 0.5);
+        return (int)(pixel*(1<<(ZOOM_0_TILE_BITS-zoomLevel-TILE_WIDTH_BITS)) / scalingZoom + 0.5);
     }
 
     final double utmToPixel(double utm) {
-        return utm/(1<<(20-zoomLevel-TILE_WIDTH_BITS)) * scalingZoom;
+        return utm/(1<<(ZOOM_0_TILE_BITS-zoomLevel-TILE_WIDTH_BITS)) * scalingZoom;
     }
 
     final double utmToScreenX(int utmx) {
-        return getWidth()/2-1 + utmToPixel(utmx - centerUtmX);
+        return screenMidX + utmToPixel(utmx - centerUtmX);
     }
 
     final double utmToScreenY(int utmy) {
-        return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
+        return screenMidY - utmToPixel(utmy - centerUtmY);
     }
 
     final double utmToScreenX(double utmx) {
-        return getWidth()/2-1 + utmToPixel(utmx - centerUtmX);
+        return screenMidX + utmToPixel(utmx - centerUtmX);
     }
 
     final double utmToScreenY(double utmy) {
-        return getHeight()/2-1 - utmToPixel(utmy - centerUtmY);
+        return screenMidY - utmToPixel(utmy - centerUtmY);
     }
 
     // level of detail configs below have been empirically tested to be visibly acceptable
@@ -426,7 +438,7 @@ public class Renderer extends View {
                     for (int zoom = MAX_ZOOM_LEVEL; zoom >= minZoom; --zoom) {
                         int stepSize = 1 << GPS_PATH.levelOfDetail.queryLevelByZoomLevel[zoom];
 
-                        int tileSizeBits = 20 - zoom;
+                        int tileSizeBits = ZOOM_0_TILE_BITS - zoom;
                         int tileSizeUtm = 1 << tileSizeBits;
                         int tx = 1_200_000 + utmIX >> tileSizeBits;
                         int ty = 8_500_000 - utmIY >> tileSizeBits;
@@ -479,33 +491,33 @@ public class Renderer extends View {
         long t0 = LogStats.time();
 
         // calculate utm coordinates for screen corners
-        int utm0x = (int)Math.floor(centerUtmX-pixelToUtm(getWidth()/2-1));
-        int utm0y = (int)Math.floor(centerUtmY-pixelToUtm(getHeight()/2-1));
-        int utm1x = (int)Math.ceil(centerUtmX+pixelToUtm(getWidth()/2));
-        int utm1y = (int)Math.ceil(centerUtmY+pixelToUtm(getHeight()/2));
+        double utmMidX = pixelToUtm(screenMidX);
+        double utmMidY = pixelToUtm(screenMidY);
+        int utm0x = (int)Math.floor(centerUtmX - utmMidX);
+        int utm0y = (int)Math.floor(centerUtmY - utmMidY);
+        int utm1x = (int)Math.ceil(centerUtmX + utmMidX);
+        int utm1y = (int)Math.ceil(centerUtmY + utmMidY);
 
         // convert utm coordinates to tile indices
-        int tileSizeBits = 20-zoomLevel;
+        int tileSizeBits = ZOOM_0_TILE_BITS - zoomLevel;
 
         int tx0 = 1_200_000 + utm0x >> tileSizeBits;
         int ty0 = 8_500_000 - utm1y >> tileSizeBits;
         int tx1 = 1_200_000 + utm1x >> tileSizeBits;
         int ty1 = 8_500_000 - utm0y >> tileSizeBits;
 
+        float tileScreenY = (float)utmToScreenY(8_500_000 - (ty0 << tileSizeBits));
         for (int ty = ty0; ty <= ty1; ++ty) {
-            int tileUtmY = 8_500_000 - (ty << tileSizeBits);
-            double tileScreenY = utmToScreenY(tileUtmY);
-
+            float tileScreenX = (float)utmToScreenX((tx0 << tileSizeBits) - 1_200_000);
             for (int tx = tx0; tx <= tx1; ++tx) {
-                int tileUtmX = (tx << tileSizeBits) - 1_200_000;
-                double tileScreenX = utmToScreenX(tileUtmX);
-
                 Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
                 if (tile != null) {
                     Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                    copyImage(canvas, tileImg, tileScreenX, tileScreenY);
+                    copyTile(canvas, tileImg, tileScreenX, tileScreenY);
                 }
+                tileScreenX += TILE_WIDTH_PIXELS * scalingZoom;
             }
+            tileScreenY += TILE_WIDTH_PIXELS * scalingZoom;
         }
 
 //        log("Draw tiles");
@@ -652,11 +664,10 @@ public class Renderer extends View {
         canvas.drawBitmap(gpsIcon, matrix, null);
     }
 
-    private void copyImage(Canvas canvas, Bitmap src, double posX, double posY) {
-        int sw = src.getWidth(), sh = src.getHeight();
-        double dw = sw * scalingZoom;
-        double dh = sh * scalingZoom;
-        Rect dstRect = new Rect((int)(posX+0.5), (int)(posY+0.5), (int)(posX+dw+0.5), (int)(posY+dh+0.5));
+    private void copyTile(Canvas canvas, Bitmap src, float posX, float posY) {
+        float size = (float)(TILE_WIDTH_PIXELS * scalingZoom);
+        // note: need to use int rectangle here, since float will result in glitches between tiles
+        Rect dstRect = new Rect((int)(posX + 0.5), (int)(posY + 0.5), (int)(posX + size + 0.5), (int)(posY + size + 0.5));
         canvas.drawBitmap(src, null, dstRect, null);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -683,6 +694,9 @@ public class Renderer extends View {
                     centerUtmY += pixelToUtm(dy);
                     panStartX = event.getX();
                     panStartY = event.getY();
+
+                    validateMapCenter();
+
                     invalidate();
                 }
                 break;
@@ -701,6 +715,14 @@ public class Renderer extends View {
         return true;
     }
 
+    /** Ensure map center is valid and for example not scrolled outside map extreme borders. */
+    private void validateMapCenter() {
+        double utmMidX = pixelToUtm(screenMidX);
+        double utmMidY = pixelToUtm(screenMidY);
+        centerUtmX = Math.max(MapConstants.UTM_X0 + utmMidX, Math.min(MapConstants.UTM_X1 - utmMidX, centerUtmX));
+        centerUtmY = Math.max(MapConstants.UTM_Y0 + utmMidY, Math.min(MapConstants.UTM_Y1 - utmMidY, centerUtmY));
+    }
+
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
         double prevFocusX, prevFocusY;
 
@@ -714,7 +736,9 @@ public class Renderer extends View {
         @Override
         public boolean onScale(ScaleGestureDetector detector) {
             double oldScaleFactor = scaleFactor;
-            scaleFactor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scaleFactor * detector.getScaleFactor()));
+
+            scaleFactor = Math.max(minZoomFitsOnScreen, Math.min(MAX_SCALE, scaleFactor * detector.getScaleFactor()));
+
             zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
             zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
             scalingZoom = scaleFactor / (1 << zoomLevel);
@@ -722,8 +746,10 @@ public class Renderer extends View {
             // translate due to focus point moving and zoom due to pinch
             double focusX = detector.getFocusX(), focusY = detector.getFocusY();
             double omScale = 1 - scaleFactor / oldScaleFactor;
-            centerUtmX += pixelToUtm((getWidth()/2-1 - focusX) * omScale - focusX + prevFocusX);
-            centerUtmY -= pixelToUtm((getHeight()/2-1 - focusY) * omScale - focusY + prevFocusY);
+            centerUtmX += pixelToUtm((screenMidX - focusX) * omScale - focusX + prevFocusX);
+            centerUtmY -= pixelToUtm((screenMidY - focusY) * omScale - focusY + prevFocusY);
+
+            validateMapCenter();
 
             prevFocusX = focusX;
             prevFocusY = focusY;
