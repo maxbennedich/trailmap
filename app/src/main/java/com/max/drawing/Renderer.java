@@ -226,9 +226,49 @@ public class Renderer extends View {
                 tile.canvas.drawBitmap(layerBitmap, 0, 0, null);
             }
 
+            // do any empty tile overwriting at the end since we don't want layers on top of it
+            fixTileIfPartiallyEmpty(tile);
+
             return tile;
         }
         return null;
+    }
+
+    /**
+     * This method is needed since the edge tiles for Sweden are partial (part tile,
+     * part black). We therefore need special code to detect these edge tiles and replace
+     * the part outside the region limits with the empty tile.
+     */
+    private void fixTileIfPartiallyEmpty(Tile tile) {
+        if (tile.zoomLevel >= MapConstants.SWEDEN_ONLY_MIN_ZOOM && tile.zoomLevel <= MapConstants.ALL_OF_SWEDEN_MAX_ZOOM) {
+            // calculate utm coordinates for tile corners
+            int tileSizeBits = ZOOM_0_TILE_BITS - tile.zoomLevel;
+            int tileSizeUtm = 1 << tileSizeBits;
+            int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
+            int uty0 = 8_500_000 - (tile.ty + 1 << tileSizeBits);
+
+            // note that the empty tile will be blitted twice for corner tiles
+            if (utx0 < MapConstants.UTM_SWEDEN_X0 && utx0 + tileSizeUtm >= MapConstants.UTM_SWEDEN_X0) {
+                int border = MapConstants.UTM_SWEDEN_X0 - utx0 >> tileSizeBits - TILE_WIDTH_BITS;
+                Rect part = new Rect(0, 0, border, TILE_WIDTH_PIXELS);
+                tile.canvas.drawBitmap(emptyTile, part, part, null);
+            }
+            if (utx0 <= MapConstants.UTM_SWEDEN_X1 && utx0 + tileSizeUtm > MapConstants.UTM_SWEDEN_X1) {
+                int border = MapConstants.UTM_SWEDEN_X1 - utx0 >> tileSizeBits - TILE_WIDTH_BITS;
+                Rect part = new Rect(border, 0, TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS);
+                tile.canvas.drawBitmap(emptyTile, part, part, null);
+            }
+            if (uty0 < MapConstants.UTM_SWEDEN_Y0 && uty0 + tileSizeUtm >= MapConstants.UTM_SWEDEN_Y0) {
+                int border = MapConstants.UTM_SWEDEN_Y0 - uty0 >> tileSizeBits - TILE_WIDTH_BITS;
+                Rect part = new Rect(0, TILE_WIDTH_PIXELS - border - 1, TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS);
+                tile.canvas.drawBitmap(emptyTile, part, part, null);
+            }
+            if (uty0 <= MapConstants.UTM_SWEDEN_Y1 && uty0 + tileSizeUtm > MapConstants.UTM_SWEDEN_Y1) {
+                int border = MapConstants.UTM_SWEDEN_Y1 - uty0 >> tileSizeBits - TILE_WIDTH_BITS;
+                Rect part = new Rect(0, 0, TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS - border);
+                tile.canvas.drawBitmap(emptyTile, part, part, null);
+            }
+        }
     }
 
     final float utmToTilePixelX(int utmx, int utmx0, int tileSizeUtm) {
@@ -374,8 +414,8 @@ public class Renderer extends View {
         screenMidY = h * 0.5;
 
         // calculate minimum zoom level that still covers the view fully
-        double minZoomX = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * w / (double)(MapConstants.UTM_X1 - MapConstants.UTM_X0);
-        double minZoomY = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * h / (double)(MapConstants.UTM_Y1 - MapConstants.UTM_Y0);
+        double minZoomX = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * w / (double)(MapConstants.UTM_EXTREME_X1 - MapConstants.UTM_EXTREME_X0);
+        double minZoomY = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * h / (double)(MapConstants.UTM_EXTREME_Y1 - MapConstants.UTM_EXTREME_Y0);
         minZoomFitsOnScreen = Math.max(MIN_SCALE, Math.max(minZoomX, minZoomY));
     }
 
@@ -418,8 +458,8 @@ public class Renderer extends View {
     private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
 
     private final QuadPointArray historyPoints = new QuadPointArray(1024);
-    private final QuadNode historyQuadTree = new QuadNode(MapConstants.UTM_X0, MapConstants.UTM_Y0,
-            MapConstants.UTM_X1, MapConstants.UTM_Y1);
+    private final QuadNode historyQuadTree = new QuadNode(MapConstants.UTM_EXTREME_X0, MapConstants.UTM_EXTREME_Y0,
+            MapConstants.UTM_EXTREME_X1, MapConstants.UTM_EXTREME_Y1);
 
     public void setGPSCoordinate(double utmX, double utmY) {
         // TODO more sophisticated method is needed, such as Kalman filter
@@ -532,10 +572,8 @@ public class Renderer extends View {
             float tileScreenX = (float)utmToScreenX((tx0 << tileSizeBits) - 1_200_000);
             for (int tx = tx0; tx <= tx1; ++tx) {
                 Tile tile = tileCache.get(getTilePos(zoomLevel, tx, ty));
-                if (tile != null) {
-                    Bitmap tileImg = tile == null ? emptyTile : tile.map;
-                    copyTile(canvas, tileImg, tileScreenX, tileScreenY);
-                }
+                Bitmap tileImg = tile == null ? emptyTile : tile.map;
+                copyTile(canvas, tileImg, tileScreenX, tileScreenY);
                 tileScreenX += TILE_WIDTH_PIXELS * scalingZoom;
             }
             tileScreenY += TILE_WIDTH_PIXELS * scalingZoom;
@@ -751,8 +789,8 @@ public class Renderer extends View {
     private void validateMapCenter() {
         double utmMidX = pixelToUtm(screenMidX);
         double utmMidY = pixelToUtm(screenMidY);
-        centerUtmX = Math.max(MapConstants.UTM_X0 + utmMidX, Math.min(MapConstants.UTM_X1 - utmMidX, centerUtmX));
-        centerUtmY = Math.max(MapConstants.UTM_Y0 + utmMidY, Math.min(MapConstants.UTM_Y1 - utmMidY, centerUtmY));
+        centerUtmX = Math.max(MapConstants.UTM_EXTREME_X0 + utmMidX, Math.min(MapConstants.UTM_EXTREME_X1 - utmMidX, centerUtmX));
+        centerUtmY = Math.max(MapConstants.UTM_EXTREME_Y0 + utmMidY, Math.min(MapConstants.UTM_EXTREME_Y1 - utmMidY, centerUtmY));
     }
 
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
