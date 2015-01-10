@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
@@ -156,12 +157,12 @@ public class Renderer extends View {
 
     /** Populate the structure of available tiles. */
     private void inventoryTiles() {
-        Pattern p = Pattern.compile("tile_(\\d{1,2})_(\\d+)_(\\d+).png");
+        Pattern p = Pattern.compile("tile_(\\d{1,2})_(\\d+)_(\\d+)\\.png");
 
-        AssetManager assMan = getContext().getAssets();
+        AssetManager manager = getContext().getAssets();
         String[] assets;
         try {
-            assets = assMan.list("tiles");
+            assets = manager.list("tiles");
         } catch (IOException e) {
             throw new IllegalStateException("Error loading assets", e);
         }
@@ -193,16 +194,9 @@ public class Renderer extends View {
             int zoom = getZoomLevel(tp);
             int tx = getTX(tp), ty = getTY(tp);
 
-            String tileName = "tile_"+zoom+"_"+tx+"_"+ty+".png";
+            String tileName = "tiles/tile_" + zoom + "_" + tx + "_" + ty + ".png";
             Log.d("AccuMap", "Loading " + tileName);
-            Bitmap map;
-            try {
-                InputStream is = getContext().getAssets().open("tiles/" + tileName);
-                map = BitmapFactory.decodeStream(is, null, NO_SCALING);
-                is.close();
-            } catch (IOException e) {
-                throw new IllegalStateException("Error loading asset "+tileName, e);
-            }
+            Bitmap map = loadAssetBitmap(tileName);
 
             Tile tile = new Tile(zoom, tx, ty, map);
 
@@ -226,12 +220,21 @@ public class Renderer extends View {
                 tile.canvas.drawBitmap(layerBitmap, 0, 0, null);
             }
 
+            // TODO this is broken! it has to be done during onDraw, or layers can draw on top of the empty part!!!
             // do any empty tile overwriting at the end since we don't want layers on top of it
             fixTileIfPartiallyEmpty(tile);
 
             return tile;
         }
         return null;
+    }
+
+    private Bitmap loadAssetBitmap(String name) {
+        try (InputStream is = getContext().getAssets().open(name)) {
+            return BitmapFactory.decodeStream(is, null, NO_SCALING);
+        } catch (IOException e) {
+            throw new IllegalStateException("Error loading asset "+name, e);
+        }
     }
 
     /**
@@ -417,6 +420,9 @@ public class Renderer extends View {
         double minZoomX = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * w / (double)(MapConstants.UTM_EXTREME_X1 - MapConstants.UTM_EXTREME_X0);
         double minZoomY = (1 << ZOOM_0_TILE_BITS - TILE_WIDTH_BITS) * h / (double)(MapConstants.UTM_EXTREME_Y1 - MapConstants.UTM_EXTREME_Y0);
         minZoomFitsOnScreen = Math.max(MIN_SCALE, Math.max(minZoomX, minZoomY));
+
+        scaleFactorUpdated();
+        mapCenterUpdated();
     }
 
     final int pixelToUtm(double pixel) {
@@ -734,11 +740,23 @@ public class Renderer extends View {
 
     }
 
+    private Rect srcRect = new Rect(1, 1, -1, -1); // left/top will always be 1 (for the 1px border)
+    private Rect dstRect = new Rect(-1, -1, -1, -1);
+
     private void copyTile(Canvas canvas, Bitmap src, float posX, float posY) {
         float size = (float)(TILE_WIDTH_PIXELS * scalingZoom);
+
+        // cut away the 1 px border, it's only needed for the borders to look smooth when filtering
+        srcRect.right = src.getWidth() - 1;
+        srcRect.bottom = src.getHeight() - 1;
+
         // note: need to use int rectangle here, since float will result in glitches between tiles
-        Rect dstRect = new Rect((int)(posX + 0.5), (int)(posY + 0.5), (int)(posX + size + 0.5), (int)(posY + size + 0.5));
-        canvas.drawBitmap(src, null, dstRect, null);
+        dstRect.left = (int)(posX + 0.5);
+        dstRect.top = (int)(posY + 0.5);
+        dstRect.right = (int)(posX + size + 0.5);
+        dstRect.bottom = (int)(posY + size + 0.5);
+
+        canvas.drawBitmap(src, srcRect, dstRect, Paints.FILTER_BITMAP);
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -765,7 +783,7 @@ public class Renderer extends View {
                     panPrevX = event.getX();
                     panPrevY = event.getY();
 
-                    validateMapCenter();
+                    mapCenterUpdated();
 
                     invalidate();
                 }
@@ -786,11 +804,20 @@ public class Renderer extends View {
     }
 
     /** Ensure map center is valid and for example not scrolled outside map extreme borders. */
-    private void validateMapCenter() {
+    private void mapCenterUpdated() {
         double utmMidX = pixelToUtm(screenMidX);
         double utmMidY = pixelToUtm(screenMidY);
         centerUtmX = Math.max(MapConstants.UTM_EXTREME_X0 + utmMidX, Math.min(MapConstants.UTM_EXTREME_X1 - utmMidX, centerUtmX));
         centerUtmY = Math.max(MapConstants.UTM_EXTREME_Y0 + utmMidY, Math.min(MapConstants.UTM_EXTREME_Y1 - utmMidY, centerUtmY));
+    }
+
+    /** Ensure scale factor is valid and update all scale factor related variables. */
+    private void scaleFactorUpdated() {
+        scaleFactor = Math.max(minZoomFitsOnScreen, Math.min(MAX_SCALE, scaleFactor));
+
+        zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
+        zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
+        scalingZoom = scaleFactor / (1 << zoomLevel);
     }
 
     private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
@@ -807,11 +834,8 @@ public class Renderer extends View {
         public boolean onScale(ScaleGestureDetector detector) {
             double oldScaleFactor = scaleFactor;
 
-            scaleFactor = Math.max(minZoomFitsOnScreen, Math.min(MAX_SCALE, scaleFactor * detector.getScaleFactor()));
-
-            zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
-            zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
-            scalingZoom = scaleFactor / (1 << zoomLevel);
+            scaleFactor *= detector.getScaleFactor();
+            scaleFactorUpdated();
 
             // translate due to focus point moving and zoom due to pinch
             double focusX = detector.getFocusX(), focusY = detector.getFocusY();
@@ -819,7 +843,7 @@ public class Renderer extends View {
             centerUtmX += pixelToUtm((screenMidX - focusX) * omScale - focusX + prevFocusX);
             centerUtmY -= pixelToUtm((screenMidY - focusY) * omScale - focusY + prevFocusY);
 
-            validateMapCenter();
+            mapCenterUpdated();
 
             prevFocusX = focusX;
             prevFocusY = focusY;

@@ -16,7 +16,7 @@ public class CustomInterceptDrawerLayout extends DrawerLayout {
     }
 
     /** Squared maximum pan distance to consider a click. TODO dpi instead of pixels */
-    private static final float CLICK_DIST2 = 60f;
+    private static final float CLICK_DIST2 = 20*20f;
 
     private float touchStartX, touchStartY;
 

@@ -17,14 +17,21 @@ import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.graphics.Point;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.app.Activity;
+import android.view.Display;
+import android.view.Surface;
 import android.widget.ListView;
 import android.widget.SeekBar;
+import android.widget.Toast;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -42,6 +49,8 @@ public class Controller extends Activity {
     public static SeekBar globalSeekBar;
 
     private Config config;
+
+    private Renderer renderer;
 
     private LocationServiceController locationServiceController;
 
@@ -72,7 +81,15 @@ public class Controller extends Activity {
         onCreateTimer.log("onCreate finished");
     }
 
-    private Renderer renderer;
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        // do any updates due to new screen orientation here
+//        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+//        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
+//        }
+    }
 
     private void createMenu() {
         List<ConfigItem<?>> configItems = Arrays.asList(
@@ -109,6 +126,16 @@ public class Controller extends Activity {
                     }
                 },
                 new ConfigItemLabel("Map view"),
+                new ConfigItemSwitch("Lock Orientation", config.lockOrientation) {
+                    @Override
+                    protected void onUpdate() {
+                        if (config.lockOrientation.value) {
+                            lockOrientation();
+                        } else {
+                            unlockOrientation();
+                        }
+                    }
+                },
                 new ConfigItemSeekBar("Brightness", config.mapBrightness) {
                     @Override
                     protected void onUpdate() {
@@ -121,6 +148,31 @@ public class Controller extends Activity {
 //        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
         drawerList = (ListView) findViewById(R.id.left_drawer);
         drawerList.setAdapter(new ConfigListAdapter(getApplicationContext(), configItems));
+    }
+
+    private static final int[] orientations = new int[] {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
+            ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT};
+    private static final List<Integer> rotations = Arrays.asList(
+            Surface.ROTATION_0, Surface.ROTATION_90, Surface.ROTATION_180, Surface.ROTATION_270);
+
+    private void lockOrientation() {
+        Display display = getWindowManager().getDefaultDisplay();
+        Point size = new Point();
+        display.getSize(size);
+
+        // the following "magic" will lock the orientation in its current mode, taking current
+        // rotation and default orientation in consideration
+        int rot = rotations.indexOf(display.getRotation());
+        int defaultOrientation = size.x > size.y ? 0 : 1; // 0 = landscape, 1 = portrait
+        //noinspection ResourceType
+        setRequestedOrientation(orientations[rot-(rot&1^defaultOrientation)&3]);
+    }
+
+    private void unlockOrientation() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
     }
 
     private void loadRoute() {

@@ -34,6 +34,8 @@ public class Paints {
 
     public static final Paint CONFIG_DIVIDER = pb().color(0xff3f3f3f).strokeWidth(2).get();
 
+    public static final Paint FILTER_BITMAP = new Paint(Paint.FILTER_BITMAP_FLAG);
+
     public static PaintBuilder pb() { return new PaintBuilder(); }
 
     static class PaintBuilder {
