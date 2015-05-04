@@ -1,17 +1,16 @@
 package com.max.drawing;
 
 import android.content.Context;
-import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
-import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.os.Environment;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -29,6 +28,8 @@ import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.text.DecimalFormat;
@@ -143,6 +144,7 @@ public class Renderer extends View {
     static {
         NO_SCALING.inScaled = false; // to keep original tile size
         NO_SCALING.inMutable = true; // to enable drawing on top of loaded tiles
+        NO_SCALING.inTempStorage = new byte[65536]; // to avoid allocating a new buffer for each loaded tile
     }
 
     private void loadBitmaps() {
@@ -155,19 +157,17 @@ public class Renderer extends View {
         layerCanvas = new Canvas(layerBitmap);
     }
 
+    public static File getTileRoot() {
+        return new File("/storage/extSdCard", "tiles");
+//        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
+    }
+
     /** Populate the structure of available tiles. */
     private void inventoryTiles() {
         Pattern p = Pattern.compile("tile_(\\d{1,2})_(\\d+)_(\\d+)\\.png");
 
-        AssetManager manager = getContext().getAssets();
-        String[] assets;
-        try {
-            assets = manager.list("tiles");
-        } catch (IOException e) {
-            throw new IllegalStateException("Error loading assets", e);
-        }
-
-        for (String asset : assets) {
+        Log.d("TileCache", "Root = " + getTileRoot());
+        for (String asset : getTileRoot().list()) {
             Matcher m = p.matcher(asset);
             if (m.find()) {
                 int zoomLevel = Integer.valueOf(m.group(1));
@@ -194,9 +194,9 @@ public class Renderer extends View {
             int zoom = getZoomLevel(tp);
             int tx = getTX(tp), ty = getTY(tp);
 
-            String tileName = "tiles/tile_" + zoom + "_" + tx + "_" + ty + ".png";
+            String tileName = "tile_" + zoom + "_" + tx + "_" + ty + ".png";
             Log.d("AccuMap", "Loading " + tileName);
-            Bitmap map = loadAssetBitmap(tileName);
+            Bitmap map = loadTileFromStorage(tileName);
 
             Tile tile = new Tile(zoom, tx, ty, map);
 
@@ -231,11 +231,12 @@ public class Renderer extends View {
         return null;
     }
 
-    private Bitmap loadAssetBitmap(String name) {
-        try (InputStream is = getContext().getAssets().open(name)) {
+    private Bitmap loadTileFromStorage(String tileName) {
+        File tileFile = new File(getTileRoot(), tileName);
+        try (InputStream is = new FileInputStream(tileFile)) {
             return BitmapFactory.decodeStream(is, null, NO_SCALING);
         } catch (IOException e) {
-            throw new IllegalStateException("Error loading asset "+name, e);
+            throw new IllegalStateException("Error loading tile "+tileName, e);
         }
     }
 
