@@ -81,8 +81,8 @@ public class Renderer extends View {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
-//    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
+//    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
+    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
     private float gpsSpeed;
@@ -217,7 +217,9 @@ public class Renderer extends View {
                     drawPointsOfInterest(layerCanvas, tile);
 
                 // finally blit layers on top of tile
-                tile.canvas.drawBitmap(layerBitmap, 0, 0, null);
+                Rect fullTile = new Rect(0, 0, TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS);
+                Rect excludeBorder = new Rect(1, 1, TILE_WIDTH_PIXELS+1, TILE_WIDTH_PIXELS+1);
+                tile.canvas.drawBitmap(layerBitmap, fullTile, excludeBorder, null);
             }
 
             // TODO this is broken! it has to be done during onDraw, or layers can draw on top of the empty part!!!
