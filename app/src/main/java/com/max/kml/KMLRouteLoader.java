@@ -70,7 +70,7 @@ public class KMLRouteLoader {
             }
         }
 
-        return new Route(segments, pois);
+        return new Route(segments, pois, new ArrayList<PointOfInterest>());
     }
 
     XY readPOI(Element point) throws InvalidKMLException {

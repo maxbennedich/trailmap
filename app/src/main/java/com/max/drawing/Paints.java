@@ -20,8 +20,10 @@ public class Paints {
 
     public static final int POINT_OF_INTEREST_SIZE = 12;
 
-    public static final Paint POINT_OF_INTEREST = pb().color(0xffffff00).strokeWidth(POINT_OF_INTEREST_SIZE - 4).antialias().get();
+    public static final Paint POINT_OF_INTEREST = pb().color(0xffff9f00).strokeWidth(POINT_OF_INTEREST_SIZE - 4).antialias().get();
     public static final Paint POINT_OF_INTEREST_OUTLINE = pb().color(0xff000000).strokeWidth(POINT_OF_INTEREST_SIZE).antialias().get();
+    public static final Paint WAYPOINT = pb().color(0xffffff00).strokeWidth(POINT_OF_INTEREST_SIZE - 4).antialias().get();
+    public static final Paint WAYPOINT_OUTLINE = pb().color(0xff000000).strokeWidth(POINT_OF_INTEREST_SIZE).antialias().get();
 
     public static final int PATH_WIDTH = 6;
 

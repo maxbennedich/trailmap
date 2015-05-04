@@ -217,7 +217,13 @@ public class Controller extends Activity {
 
     private void loadPointsOfInterest() {
         loadTimer.reset();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getResources().openRawResource(R.raw.gotland_pois)))) {
+        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
+        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
+        loadTimer.log("Loaded points of interest");
+    }
+
+    private List<PointOfInterest> loadPointsOfInterest(int resourceId, boolean numbered) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getResources().openRawResource(resourceId)))) {
             int count = Integer.valueOf(reader.readLine());
             List<PointOfInterest> poi = new ArrayList<>(count);
             for (int n = 0; n < count; ++n) {
@@ -225,14 +231,13 @@ public class Controller extends Activity {
                 String coordinates = reader.readLine();
                 String[] xy = coordinates.split(",");
                 poi.add(new PointOfInterest(name, Integer.valueOf(xy[0]), Integer.valueOf(xy[1])));
-                poi.get(n).label = String.format("%s (%d/%d)", name, n + 1, count);
+                poi.get(n).label = numbered ? String.format("%s (%d/%d)", name, n + 1, count) : name;
             }
 
-            renderer.pointsOfInterest = poi;
+            return poi;
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to load points of interest resource", e);
+            throw new IllegalStateException("Failed to load points of interest resource " + resourceId, e);
         }
-        loadTimer.log("Loaded points of interest");
     }
 
     private final LocationListenerWithPreviousLocation locationListener = new LocationListenerWithPreviousLocation() {

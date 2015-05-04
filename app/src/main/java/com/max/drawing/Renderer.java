@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
@@ -49,6 +50,10 @@ public class Renderer extends View {
     public QuadPointArray points;
     public QuadNode quadRoot;
 
+    /** Sequential points making up the route. */
+    public List<PointOfInterest> waypoints;
+
+    /** General points of interest such as gas stations and restaurants. */
     public List<PointOfInterest> pointsOfInterest;
 
     private Bitmap emptyTile, gpsIcon, scale, layerBitmap;
@@ -383,19 +388,25 @@ public class Renderer extends View {
     }
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
+        drawPointsOfInterest(canvas, tile, pointsOfInterest, Paints.POINT_OF_INTEREST, Paints.POINT_OF_INTEREST_OUTLINE);
+        drawPointsOfInterest(canvas, tile, waypoints, Paints.WAYPOINT, Paints.WAYPOINT_OUTLINE);
+    }
+
+    private void drawPointsOfInterest(Canvas canvas, Tile tile, List<PointOfInterest> pois,
+                                      Paint pointPaint, Paint outlinePaint) {
         // calculate utm coordinates for tile corners
         int tileSizeBits = ZOOM_0_TILE_BITS - tile.zoomLevel;
         int tileSizeUtm = 1 << tileSizeBits;
         int utx0 = (tile.tx << tileSizeBits) - 1_200_000;
         int uty0 = 8_500_000 - (tile.ty+1 << tileSizeBits);
 
-        for (int k = 0; k < pointsOfInterest.size(); ++k) {
-            PointOfInterest poi = pointsOfInterest.get(k);
+        for (int k = 0; k < pois.size(); ++k) {
+            PointOfInterest poi = pois.get(k);
             float x = utmToTilePixelX(poi.utmX, utx0, tileSizeUtm);
             float y = utmToTilePixelY(poi.utmY, uty0, tileSizeUtm);
             if (x >= -Paints.POINT_OF_INTEREST_SIZE/2 && x < tileSizeUtm+Paints.POINT_OF_INTEREST_SIZE/2 && y >= -Paints.POINT_OF_INTEREST_SIZE/2 && y < tileSizeUtm+Paints.POINT_OF_INTEREST_SIZE/2) {
-                canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST_OUTLINE);
-                canvas.drawPoint(x, y, Paints.POINT_OF_INTEREST);
+                canvas.drawPoint(x, y, outlinePaint);
+                canvas.drawPoint(x, y, pointPaint);
             }
 
             if (tile.zoomLevel >= ZOOM_LEVEL_SHOW_LABELS) {

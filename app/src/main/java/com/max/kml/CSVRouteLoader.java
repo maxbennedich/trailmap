@@ -46,6 +46,6 @@ public class CSVRouteLoader {
             throw new IllegalStateException("Error while loading route", ioe);
         }
 
-        return new Route(segments, new ArrayList<PointOfInterest>());
+        return new Route(segments, new ArrayList<PointOfInterest>(), new ArrayList<PointOfInterest>());
     }
 }
