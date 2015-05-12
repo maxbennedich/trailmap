@@ -12,6 +12,7 @@ import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -87,8 +88,8 @@ public class Renderer extends View {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-//    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
-    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
+    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
+//    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
     private float gpsSpeed;
@@ -153,7 +154,7 @@ public class Renderer extends View {
     }
 
     private void loadBitmaps() {
-        gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow, NO_SCALING);
+        gpsIcon = BitmapFactory.decodeResource(getResources(), R.drawable.gps_arrow_yellow_120x120, NO_SCALING);
         scale = BitmapFactory.decodeResource(getResources(), R.drawable.scale, NO_SCALING);
         emptyTile = BitmapFactory.decodeResource(getResources(), R.drawable.empty, NO_SCALING);
 
@@ -163,8 +164,8 @@ public class Renderer extends View {
     }
 
     public static File getTileRoot() {
-        return new File("/storage/extSdCard", "tiles");
-//        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
+//        return new File("/storage/extSdCard", "tiles");
+        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
     }
 
     /** Populate the structure of available tiles. */
@@ -377,6 +378,13 @@ public class Renderer extends View {
                 prevIdx = idx;
             }
 
+            // first draw all outlines
+            for (int n = 0; n < PathType.values().length; ++n)
+                if (pathTypesUsed[n] && PathType.values()[n].outlinePaint != null)
+                    canvas.drawPath(paths[n], PathType.values()[n].outlinePaint);
+
+            // then draw actual paths on top of outlines (this is needed in order to have
+            // smooth connection points between adjacent paths)
             for (int n = 0; n < PathType.values().length; ++n) {
                 if (pathTypesUsed[n]) {
                     canvas.drawPath(paths[n], PathType.values()[n].paint);
@@ -436,7 +444,7 @@ public class Renderer extends View {
         minZoomFitsOnScreen = Math.max(MIN_SCALE, Math.max(minZoomX, minZoomY));
 
         scaleFactorUpdated();
-        mapCenterUpdated();
+        mapCenterUpdated(false);
     }
 
     final int pixelToUtm(double pixel) {
@@ -477,9 +485,16 @@ public class Renderer extends View {
      */
     private static final int MIN_HISTORY_POINT_DIST2 = 20*20;
 
-    private final QuadPointArray historyPoints = new QuadPointArray(1024);
-    private final QuadNode historyQuadTree = new QuadNode(MapConstants.UTM_EXTREME_X0, MapConstants.UTM_EXTREME_Y0,
-            MapConstants.UTM_EXTREME_X1, MapConstants.UTM_EXTREME_Y1);
+    private QuadPointArray historyPoints;
+    private QuadNode historyQuadTree;
+    { resetGPS(); }
+
+    public void resetGPS() {
+        gpsDist = 0;
+        historyPoints = new QuadPointArray(1024);
+        historyQuadTree = new QuadNode(MapConstants.UTM_EXTREME_X0, MapConstants.UTM_EXTREME_Y0,
+                MapConstants.UTM_EXTREME_X1, MapConstants.UTM_EXTREME_Y1);
+    }
 
     public void setGPSCoordinate(double utmX, double utmY) {
         // TODO more sophisticated method is needed, such as Kalman filter
@@ -552,6 +567,18 @@ public class Renderer extends View {
                         }
                     }
                 }
+            }
+        }
+
+        if (config.followGps.value) {
+            // if user has manually moved around, wait a few seconds or so, then slowly pan towards the current position
+            // TODO rewrite once we have a proper frame rate sync running
+            long elapsed = SystemClock.uptimeMillis() - lastUserMoveMs;
+            if (elapsed > DELAY_AFTER_USER_MOVE_MS) {
+                float factor = Math.min(1, (elapsed - DELAY_AFTER_USER_MOVE_MS) / (float) DELAY_AFTER_USER_MOVE_MS * 0.1f);
+                centerUtmX = centerUtmX * (1 - factor) + gpsX * factor;
+                centerUtmY = centerUtmY * (1 - factor) + gpsY * factor;
+                mapCenterUpdated(false);
             }
         }
     }
@@ -741,7 +768,7 @@ public class Renderer extends View {
         matrix.reset();
         matrix.postRotate(gpsBearing, gpsIcon.getWidth()/2, gpsIcon.getHeight()/2);
         matrix.postTranslate((float)(x-gpsIcon.getWidth()/2), (float)(y-gpsIcon.getHeight()/2));
-        canvas.drawBitmap(gpsIcon, matrix, null);
+        canvas.drawBitmap(gpsIcon, matrix, Paints.GPS_ICON);
     }
 
     private void drawGPSStats(Canvas canvas) {
@@ -774,6 +801,12 @@ public class Renderer extends View {
     }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+    /** After user has manually moved around screen position, wait this nr of ms until
+     * resuming auto position update. */
+    public static int DELAY_AFTER_USER_MOVE_MS = 5000;
+
+    private long lastUserMoveMs = 0;
+
     enum ActionMode { NONE, PAN, ZOOM }
 
     private ScaleGestureDetector zoomDetector;
@@ -797,7 +830,7 @@ public class Renderer extends View {
                     panPrevX = event.getX();
                     panPrevY = event.getY();
 
-                    mapCenterUpdated();
+                    mapCenterUpdated(true);
 
                     invalidate();
                 }
@@ -818,11 +851,14 @@ public class Renderer extends View {
     }
 
     /** Ensure map center is valid and for example not scrolled outside map extreme borders. */
-    private void mapCenterUpdated() {
+    private void mapCenterUpdated(boolean userIssued) {
         double utmMidX = pixelToUtm(screenMidX);
         double utmMidY = pixelToUtm(screenMidY);
         centerUtmX = Math.max(MapConstants.UTM_EXTREME_X0 + utmMidX, Math.min(MapConstants.UTM_EXTREME_X1 - utmMidX, centerUtmX));
         centerUtmY = Math.max(MapConstants.UTM_EXTREME_Y0 + utmMidY, Math.min(MapConstants.UTM_EXTREME_Y1 - utmMidY, centerUtmY));
+
+        if (userIssued)
+            lastUserMoveMs = SystemClock.uptimeMillis();
     }
 
     /** Ensure scale factor is valid and update all scale factor related variables. */
@@ -857,7 +893,7 @@ public class Renderer extends View {
             centerUtmX += pixelToUtm((screenMidX - focusX) * omScale - focusX + prevFocusX);
             centerUtmY -= pixelToUtm((screenMidY - focusY) * omScale - focusY + prevFocusY);
 
-            mapCenterUpdated();
+            mapCenterUpdated(true);
 
             prevFocusX = focusX;
             prevFocusY = focusY;

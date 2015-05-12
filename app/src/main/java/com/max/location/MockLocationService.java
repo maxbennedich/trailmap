@@ -8,7 +8,7 @@ import java.util.Random;
 
 /** Mock location service that essentially does a random walk. */
 public class MockLocationService implements Runnable, PausableLocationService {
-    private static final long MOCK_LOCATION_UPDATE_INTERVAL_MS = 30;
+    private static final long MOCK_LOCATION_UPDATE_INTERVAL_MS = 16;
 
     private final LocationListenerWithPreviousLocation locationListener;
 
@@ -21,7 +21,7 @@ public class MockLocationService implements Runnable, PausableLocationService {
     private float latLngSpd = 0.5f;
 
     /** Max speed (added to lat/lng coordinates directly). */
-    private float latLngSpdFactor = 1e-5f;
+    private float latLngSpdFactor = 0.5e-5f;
 
     /** Meters per second. */
     private float speed = 0;

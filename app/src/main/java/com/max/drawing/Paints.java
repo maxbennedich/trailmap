@@ -25,10 +25,12 @@ public class Paints {
     public static final Paint WAYPOINT = pb().color(0xffffff00).strokeWidth(POINT_OF_INTEREST_SIZE - 4).antialias().get();
     public static final Paint WAYPOINT_OUTLINE = pb().color(0xff000000).strokeWidth(POINT_OF_INTEREST_SIZE).antialias().get();
 
-    public static final int PATH_WIDTH = 6;
+    public static final int PATH_WIDTH = 8;
 
-    public static final Paint PATH_MAJOR_ROAD = pb().color(0x7fff0000).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
-    public static final Paint PATH_MINOR_ROAD = pb().color(0x7fff7f00).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
+    public static final Paint PATH_MAJOR_ROAD_OUTLINE = null;
+    public static final Paint PATH_MINOR_ROAD_OUTLINE = null;
+    public static final Paint PATH_MAJOR_ROAD = pb().color(0x7f0000ff).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
+    public static final Paint PATH_MINOR_ROAD = pb().color(0x7f007fff).stroke(PATH_WIDTH).round().dstAtop().antialias().get();
 
     public static final int HISTORY_WIDTH = 4;
 
@@ -37,6 +39,8 @@ public class Paints {
     public static final Paint CONFIG_DIVIDER = pb().color(0xff3f3f3f).strokeWidth(2).get();
 
     public static final Paint FILTER_BITMAP = new Paint(Paint.FILTER_BITMAP_FLAG);
+
+    public static final Paint GPS_ICON = pb().color(0x9fffffff).get();
 
     public static PaintBuilder pb() { return new PaintBuilder(); }
 

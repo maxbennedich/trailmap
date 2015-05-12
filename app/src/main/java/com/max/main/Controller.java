@@ -100,10 +100,18 @@ public class Controller extends Activity {
                         locationServiceController.enableGps(config.gpsEnabled.value);
                     }
                 },
-                new ConfigItemSwitch("Simulate movement", config.mockLocationService) {
+                new ConfigItemSwitch("Simulate Movement", config.mockLocationService) {
                     @Override
                     protected void onUpdate() {
                         locationServiceController.enableMock(config.mockLocationService.value);
+                    }
+                },
+                new ConfigItemSwitch("Follow GPS", config.followGps) { },
+                new ConfigItemSwitch("Reset GPS", config.resetDistance) {
+                    @Override
+                    protected void onUpdate() {
+                        renderer.resetGPS();
+                        renderer.invalidateTileCache(true);
                     }
                 },
                 new ConfigItemLabel("Layers"),
@@ -181,7 +189,8 @@ public class Controller extends Activity {
         // with capacity 64, for a total of 1100-1250 ms. For comparison, deserializing the points
         // and the built tree from a pre-calculated resource took 2700 ms, i.e. >2 times slower.
         loadTimer.reset();
-        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
+        InputStream is = getResources().openRawResource(R.raw.solna_gottrora);
+//        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
         QuadPointArray points;
         try {
