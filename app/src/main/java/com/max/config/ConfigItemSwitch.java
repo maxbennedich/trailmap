@@ -10,10 +10,12 @@ public abstract class ConfigItemSwitch extends ConfigItem<Boolean> implements Vi
         super(title, value);
     }
 
+    private Switch switchButton;
+
     @Override public void buildView(View view) {
         super.buildView(view);
 
-        Switch switchButton = (Switch) view.findViewById(R.id.switchButton);
+        switchButton = (Switch) view.findViewById(R.id.switchButton);
 
         switchButton.setChecked(value.value);
         switchButton.setOnClickListener(this);
@@ -28,5 +30,10 @@ public abstract class ConfigItemSwitch extends ConfigItem<Boolean> implements Vi
 
     @Override protected int getResource() {
         return R.layout.config_switch;
+    }
+
+    /** Call this to programmatically turn on or off the switch. */
+    public void forceClick() {
+        switchButton.performClick();
     }
 }

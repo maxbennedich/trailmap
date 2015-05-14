@@ -583,10 +583,12 @@ public class Renderer extends View {
         }
     }
 
+    /** In degrees (not radians). */
     public void setGPSBearing(float bearing) {
         gpsBearing = bearing;
     }
 
+    /** In meters / second. */
     public void setGPSSpeed(float speed) {
         gpsSpeed = speed;
     }
@@ -805,6 +807,7 @@ public class Renderer extends View {
      * resuming auto position update. */
     public static int DELAY_AFTER_USER_MOVE_MS = 5000;
 
+    /** uptimemillis for the last time the user issued a request to move screen position */
     private long lastUserMoveMs = 0;
 
     enum ActionMode { NONE, PAN, ZOOM }
@@ -815,6 +818,10 @@ public class Renderer extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (config.touchLocationService.value)
+            if (handleTouchLocationUpdate(event))
+                return true;
+
         switch (event.getAction() & MotionEvent.ACTION_MASK) {
             case MotionEvent.ACTION_DOWN:
                 panPrevX = event.getX();
@@ -847,6 +854,41 @@ public class Renderer extends View {
         if (actionMode == ActionMode.ZOOM)
             zoomDetector.onTouchEvent(event);
 
+        return true;
+    }
+
+    /** uptimemillis for the last time the user updated the gps location by touch (when enabled) */
+    private long lastUserMoveToTouchMs = 0;
+
+    /**
+     * Translate the touch event into a GPS location update. (Used for testing.)
+     * @return Whether the event was processed.
+     */
+    private boolean handleTouchLocationUpdate(MotionEvent event) {
+        double px = event.getX() - screenMidX;
+        double py = event.getY() - screenMidY;
+        double newGpsX = centerUtmX + pixelToUtm(px);
+        double newGpsY = centerUtmY - pixelToUtm(py);
+        double dx = gpsX - newGpsX, dy = gpsY - newGpsY;
+        double pdx = utmToPixel(dx), pdy = utmToPixel(dy);
+
+        // Only pick up touch events near the current position. For other touch events,
+        // fall back to regular pan/zoom.
+        if (Math.abs(pdx) > 50 || Math.abs(pdy) > 50)
+            return false;
+
+        if (pdx != 0 || pdy != 0) {
+            setGPSBearing((float) (Math.atan2(-pdy, pdx) / Math.PI * 180)-90);
+            setGPSCoordinate(newGpsX, newGpsY);
+
+            float dist = (float)Math.sqrt(dx*dx + dy*dy);
+            long curTime = SystemClock.uptimeMillis();
+            long elapsed = curTime - lastUserMoveToTouchMs;
+            setGPSSpeed(dist * 1000 / elapsed);
+            lastUserMoveToTouchMs = curTime;
+
+            invalidate();
+        }
         return true;
     }
 

@@ -92,6 +92,8 @@ public class Controller extends Activity {
     }
 
     private void createMenu() {
+        final ConfigItemSwitch followGps = new ConfigItemSwitch("Follow GPS", config.followGps) { };
+
         List<ConfigItem<?>> configItems = Arrays.asList(
                 new ConfigItemLabel("General"),
                 new ConfigItemSwitch("Use GPS", config.gpsEnabled) {
@@ -106,7 +108,15 @@ public class Controller extends Activity {
                         locationServiceController.enableMock(config.mockLocationService.value);
                     }
                 },
-                new ConfigItemSwitch("Follow GPS", config.followGps) { },
+                new ConfigItemSwitch("Move to Touch", config.touchLocationService) {
+                    @Override
+                    protected void onUpdate() {
+                        // turn off follow GPS if enabling this option since they're pointless together
+                        if (config.touchLocationService.value && config.followGps.value)
+                            followGps.forceClick();
+                    }
+                },
+                followGps,
                 new ConfigItemSwitch("Reset GPS", config.resetDistance) {
                     @Override
                     protected void onUpdate() {
