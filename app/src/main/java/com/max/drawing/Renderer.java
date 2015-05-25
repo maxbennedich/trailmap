@@ -685,7 +685,7 @@ public class Renderer extends View implements Persistable {
 //        log("Draw tiles");
 
         drawGPSMarker(canvas);
-//        drawScaleMarker(canvas);
+        drawScaleMarker(canvas);
 
         if (config.navigateEnabled.value)
             navigate(canvas);
@@ -808,16 +808,18 @@ public class Renderer extends View implements Persistable {
         double pixelLength = utmToPixel(rounded);
         int scaledWidth = (int)(pixelLength * scale.getWidth() / SCALE_MARKER_WIDTH + 0.5);
 
-        Rect dstRect = new Rect(getWidth()-36-scaledWidth, getHeight()-29, getWidth()-36, getHeight()-29+scale.getHeight());
+        int xAdj = - (getWidth() - scaledWidth - 36*2) / 2;
+
+        Rect dstRect = new Rect(xAdj + getWidth()-36-scaledWidth, getHeight()-29, xAdj + getWidth()-36, getHeight()-29+scale.getHeight());
         canvas.drawBitmap(scale, null, dstRect, null);
 
         int labelIdx = k + exp*3;
         float textWidth = Paints.FONT_OUTLINE_SCALE.measureText(SCALE_LABELS[labelIdx]);
-        canvas.drawText(SCALE_LABELS[labelIdx], getWidth()-textWidth-8, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
-        canvas.drawText(SCALE_LABELS[labelIdx], getWidth()-textWidth-8, getHeight()-36, Paints.FONT_SCALE);
+        canvas.drawText(SCALE_LABELS[labelIdx], xAdj + getWidth()-textWidth-8, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText(SCALE_LABELS[labelIdx], xAdj + getWidth()-textWidth-8, getHeight()-36, Paints.FONT_SCALE);
 
-        canvas.drawText(SCALE_LABELS[0], getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
-        canvas.drawText(SCALE_LABELS[0], getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_SCALE);
+        canvas.drawText(SCALE_LABELS[0], xAdj + getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_OUTLINE_SCALE);
+        canvas.drawText(SCALE_LABELS[0], xAdj + getWidth()-36-scaledWidth-3, getHeight()-36, Paints.FONT_SCALE);
     }
 
     private Matrix matrix = new Matrix(); // to not have to constantly reallocate
@@ -845,20 +847,6 @@ public class Renderer extends View implements Persistable {
             printCentered(canvas, p.label, Paints.FONT_SIZE_GPS_STATS);
 
             // 3.6 for m/s -> km/h
-//            String stat1 = ""+(int)(gpsSpeed * 3.6 + 0.5);
-//            String stat2 = " km/h";
-//            String stat3 = "     " + navigator.getDistanceToNextWaypoint(); // ‧⋅
-//            String stat4 = " m";
-//            float wid1 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat1);
-//            float wid2 = Paints.FONT_OUTLINE_NAVIGATION_STATS.measureText(stat2);
-//            float wid3 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat3);
-//            float wid4 = Paints.FONT_OUTLINE_NAVIGATION_STATS.measureText(stat4);
-//            float xStart = (float)screenMidX - (wid1 + wid2 + wid3 + wid4) * 0.5f;
-//            float y = Paints.FONT_SIZE_GPS_STATS * 2;
-//            print(canvas, stat1, xStart, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
-//            print(canvas, stat2, xStart + wid1, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
-//            print(canvas, stat3, xStart + wid1 + wid2, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
-//            print(canvas, stat4, xStart + wid1 + wid2 + wid3, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
             String stat1 = ""+(int)(gpsSpeed * 3.6 + 0.5);
             String stat2 = " km/h";
             String stat3 = "" + navigator.getDistanceToNextWaypoint();
