@@ -130,27 +130,29 @@ public class QuadNode implements Serializable {
     }
 
     /** This method does not support hierarchies; it searches ALL points. */
-    public QuadNode getNearestNeighbor(int qx, int qy, List<QuadPoint> points) {
-        bestNode = null;
+    public int getNearestNeighbor(int qx, int qy, QuadPointArray points) {
+        bestIdx = -1;
         bestDist = 1L<<62;
         getNearestNeighborRecursive(qx, qy, points);
-        return bestNode;
+        return bestIdx;
     }
 
     // note: the below constants make this class not thread safe
-    private static QuadNode bestNode;
+    private static int bestIdx;
     private static long bestDist;
     private static final long[] xd = {0, 0, 0};
     private static final long[] yd = {0, 0, 0};
 
-    private void getNearestNeighborRecursive(int qx, int qy, List<QuadPoint> points) {
+    private void getNearestNeighborRecursive(int qx, int qy, QuadPointArray points) {
         // test point for proximity
         if (pointIdx != null) {
-            QuadPoint qp = points.get(pointIdx[0]); // TODO broken -- must check ALL coordinates
-            long dist = (long)(qp.x-qx)*(qp.x-qx) + (long)(qp.y-qy)*(qp.y-qy);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestNode = this;
+            for (int p = 0; p < pointCount; ++p) {
+                int x = points.x[pointIdx[p]], y = points.y[pointIdx[p]];
+                long dist = (long) (x - qx) * (x - qx) + (long) (y - qy) * (y - qy);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = pointIdx[p];
+                }
             }
         }
 

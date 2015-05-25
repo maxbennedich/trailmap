@@ -2,6 +2,7 @@ package com.max.main;
 
 import com.max.config.Config;
 import com.max.config.ConfigItem;
+import com.max.config.ConfigItemButton;
 import com.max.config.ConfigItemLabel;
 import com.max.config.ConfigItemSeekBar;
 import com.max.config.ConfigItemSwitch;
@@ -13,11 +14,12 @@ import com.max.latlng.LatLngHelper;
 import com.max.location.LocationListenerWithPreviousLocation;
 import com.max.location.LocationServiceController;
 import com.max.logic.XYd;
+import com.max.route.NavigationConfigDialog;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
-import android.annotation.SuppressLint;
+import android.app.DialogFragment;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
@@ -31,18 +33,15 @@ import android.view.Display;
 import android.view.Surface;
 import android.widget.ListView;
 import android.widget.SeekBar;
-import android.widget.Toast;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class Controller extends Activity {
+public class Controller extends Activity implements NavigationConfigDialog.NavigationConfigDialogListener {
 
     private ListView drawerList;
 
@@ -75,10 +74,30 @@ public class Controller extends Activity {
 
         createMenu();
 
-        loadRoute();
         loadPointsOfInterest();
+        loadRoute();
+
+        renderer.navigator.initRoute();
 
         onCreateTimer.log("onCreate finished");
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        config.saveInstanceState(savedInstanceState, "config");
+        renderer.saveInstanceState(savedInstanceState, "renderer");
+
+        // call the superclass so it can save the view hierarchy state
+        super.onSaveInstanceState(savedInstanceState);
+    }
+
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        // call the superclass so it can restore the view hierarchy state
+        super.onRestoreInstanceState(savedInstanceState);
+
+        config.restoreInstanceState(savedInstanceState, "config");
+        renderer.restoreInstanceState(savedInstanceState, "renderer");
     }
 
     @Override
@@ -96,6 +115,15 @@ public class Controller extends Activity {
 
         List<ConfigItem<?>> configItems = Arrays.asList(
                 new ConfigItemLabel("General"),
+                new ConfigItemSwitch("Navigate", config.navigateEnabled) {
+                    @Override
+                    protected void onUpdate() {
+                        if (config.navigateEnabled.value)
+                            renderer.navigator.start();
+                        else
+                            renderer.navigator.stop();
+                    }
+                },
                 new ConfigItemSwitch("Use GPS", config.gpsEnabled) {
                     @Override
                     protected void onUpdate() {
@@ -159,13 +187,33 @@ public class Controller extends Activity {
                     protected void onUpdate() {
                         renderer.invalidateTileCache(true);
                     }
-                }
+                },
 //                new CacheSizeSeekBar("Cache Size", config),
+                new ConfigItemButton("Navigation Config") {
+                    @Override
+                    protected void onUpdate() {
+                        DialogFragment newFragment = new NavigationConfigDialog();
+                        newFragment.show(Controller.this.getFragmentManager(), "navconfig");
+                    }
+                }
         );
 
 //        CustomInterceptDrawerLayout drawerLayout = (CustomInterceptDrawerLayout) findViewById(R.id.drawer_layout);
         drawerList = (ListView) findViewById(R.id.left_drawer);
         drawerList.setAdapter(new ConfigListAdapter(getApplicationContext(), configItems));
+    }
+
+    @Override
+    public void updateNavigationConfig(Integer lastWaypointIdx, Integer elapsedTimeMin) {
+        if (lastWaypointIdx != null)
+            renderer.navigator.setNextWaypoint(lastWaypointIdx + 1);
+        if (elapsedTimeMin != null)
+            renderer.navigator.setElapsedTime(elapsedTimeMin * 60);
+    }
+
+    @Override
+    public String getNavigationStats() {
+        return renderer.navigator.getNavigationStats();
     }
 
     private static final int[] orientations = new int[] {
@@ -199,8 +247,8 @@ public class Controller extends Activity {
         // with capacity 64, for a total of 1100-1250 ms. For comparison, deserializing the points
         // and the built tree from a pre-calculated resource took 2700 ms, i.e. >2 times slower.
         loadTimer.reset();
-        InputStream is = getResources().openRawResource(R.raw.solna_gottrora);
 //        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
+        InputStream is = getResources().openRawResource(R.raw.lidingo_waypoint_experiment);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
         QuadPointArray points;
         try {
@@ -211,13 +259,25 @@ public class Controller extends Activity {
         loadTimer.log("Loaded route");
 
         QuadNode quadRoot = buildQuadTree(points);
-        loadTimer.log("Built quad tree");
+        loadTimer.log("Built main quad tree");
+
+        QuadNode[] segmentQuadRoots = new QuadNode[renderer.waypoints.size()];
+        for (int k = 0; k < segmentQuadRoots.length; ++k) {
+            segmentQuadRoots[k] = buildQuadTree(points, renderer.waypoints.get(k).routeIndex,
+                    k == segmentQuadRoots.length - 1 ? points.nrPoints : renderer.waypoints.get(k + 1).routeIndex);
+        }
+        loadTimer.log("Built segment quad trees");
 
         renderer.points = points;
         renderer.quadRoot = quadRoot;
+        renderer.segmentQuadRoots = segmentQuadRoots;
     }
 
     QuadNode buildQuadTree(QuadPointArray points) {
+        return buildQuadTree(points, 0, points.nrPoints);
+    }
+
+    QuadNode buildQuadTree(QuadPointArray points, int beginIdx, int endIdx) {
         // find points bounding box (min/max)
         int x0 = 1<<30, y0 = 1<<30, x1 = -(1<<30), y1 = -(1<<30);
         for (int k = 0; k < points.nrPoints; ++k) {
@@ -228,7 +288,7 @@ public class Controller extends Activity {
         }
 
         QuadNode root = new QuadNode(x0, y0, x1, y1);
-        for (int k = 0; k < points.nrPoints; k ++)
+        for (int k = beginIdx; k < endIdx; ++k)
             root.insertPoint(k, points);
 
         return root;
@@ -236,8 +296,10 @@ public class Controller extends Activity {
 
     private void loadPointsOfInterest() {
         loadTimer.reset();
-        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
-        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
+//        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
+//        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
+        renderer.waypoints = loadPointsOfInterest(R.raw.lidingo_waypoint_experiment_pois, true);
+        renderer.pointsOfInterest = null;
         loadTimer.log("Loaded points of interest");
     }
 
@@ -249,8 +311,12 @@ public class Controller extends Activity {
                 String name = reader.readLine();
                 String coordinates = reader.readLine();
                 String[] xy = coordinates.split(",");
-                poi.add(new PointOfInterest(name, Integer.valueOf(xy[0]), Integer.valueOf(xy[1])));
-                poi.get(n).label = numbered ? String.format("%s (%d/%d)", name, n + 1, count) : name;
+                int utmX = Integer.valueOf(xy[0]);
+                int utmY = Integer.valueOf(xy[1]);
+                poi.add(xy.length <= 2 ?
+                        new PointOfInterest(name, utmX, utmY) :
+                        new PointOfInterest(name, utmX, utmY, Integer.valueOf(xy[2])));
+                poi.get(n).label = numbered ? String.format("%s (%d)", name, ((n + count - 1) % count) + 1) : name;
             }
 
             return poi;

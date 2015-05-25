@@ -11,7 +11,7 @@ import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.Typeface;
-import android.os.Environment;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -22,7 +22,9 @@ import android.view.View;
 import com.max.logic.Tile;
 import com.max.config.Config;
 import com.max.main.LogStats;
+import com.max.main.Persistable;
 import com.max.main.R;
+import com.max.route.Navigator;
 import com.max.route.PathConfiguration;
 import com.max.route.PathLevelOfDetail;
 import com.max.route.PathType;
@@ -44,12 +46,15 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Renderer extends View {
+public class Renderer extends View implements Persistable {
 
     public Config config;
 
     public QuadPointArray points;
     public QuadNode quadRoot;
+    public QuadNode[] segmentQuadRoots;
+
+    public Navigator navigator;
 
     /** Sequential points making up the route. */
     public List<PointOfInterest> waypoints;
@@ -70,7 +75,7 @@ public class Renderer extends View {
 
     private static final double MIN_SCALE = 1 << MIN_ZOOM_LEVEL;
     private static final double MAX_SCALE = (1 << MAX_ZOOM_LEVEL) << 3;
-    private double scaleFactor = 70;
+    private double scaleFactor = 150;
 
     public int zoomLevel = (int)log2(scaleFactor);
 
@@ -88,8 +93,8 @@ public class Renderer extends View {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-    private double centerUtmX = 669_715, centerUtmY = 6_583_611; // solna
-//    private double centerUtmX = 712_650, centerUtmY = 6_370_272; // gotland
+    private double centerUtmX = 673_905, centerUtmY = 6_581_834; // holländargatan
+//    private double centerUtmX = 696_910, centerUtmY = 6_393_950; // visby
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
     private float gpsSpeed;
@@ -133,17 +138,63 @@ public class Renderer extends View {
         fontAurora = Typeface.createFromAsset(context.getAssets(), "fonts/aurora.otf");
         Paints.FONT_OUTLINE_GPS_STATS.setTypeface(fontAurora);
         Paints.FONT_GPS_STATS.setTypeface(fontAurora);
-
         Paints.FONT_OUTLINE_SCALE.setTypeface(fontAurora);
         Paints.FONT_SCALE.setTypeface(fontAurora);
         Paints.FONT_OUTLINE_POI.setTypeface(fontAurora);
         Paints.FONT_POI.setTypeface(fontAurora);
+        Paints.FONT_OUTLINE_NAVIGATION_STATS.setTypeface(fontAurora);
+        Paints.FONT_NAVIGATION_STATS.setTypeface(fontAurora);
+        Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT.setTypeface(fontAurora);
+        Paints.FONT_NAVIGATION_SUBSCRIPT.setTypeface(fontAurora);
 
         loadBitmaps();
 
         inventoryTiles();
 
+        navigator = new Navigator(this);
+
         timer.log("Initialized renderer");
+    }
+
+    @Override
+    public void saveInstanceState(Bundle savedInstanceState, String prefix) {
+        prefix += "_";
+
+        // map position
+        savedInstanceState.putDouble(prefix + "utmX", centerUtmX);
+        savedInstanceState.putDouble(prefix + "utmY", centerUtmY);
+        savedInstanceState.putDouble(prefix + "scaleFactor", scaleFactor);
+
+        // gps info
+        savedInstanceState.putDouble(prefix + "gpsX", gpsX);
+        savedInstanceState.putDouble(prefix + "gpsY", gpsY);
+        savedInstanceState.putFloat(prefix + "gpsDist", gpsDist);
+        // TODO: gps track
+
+        // navigator
+        navigator.saveInstanceState(savedInstanceState, "navigator");
+    }
+
+    @Override
+    public void restoreInstanceState(Bundle savedInstanceState, String prefix) {
+        prefix += "_";
+
+        // map position
+        centerUtmX = savedInstanceState.getDouble(prefix + "utmX");
+        centerUtmY = savedInstanceState.getDouble(prefix + "utmY");
+        scaleFactor = savedInstanceState.getDouble(prefix + "scaleFactor");
+
+        mapCenterUpdated(false);
+        scaleFactorUpdated();
+
+        // gps info
+        gpsX = savedInstanceState.getDouble(prefix + "gpsX");
+        gpsY = savedInstanceState.getDouble(prefix + "gpsY");
+        gpsDist = savedInstanceState.getFloat(prefix + "gpsDist");
+        // TODO: gps track
+
+        // navigator
+        navigator.restoreInstanceState(savedInstanceState, "navigator");
     }
 
     private static final BitmapFactory.Options NO_SCALING = new BitmapFactory.Options();
@@ -164,8 +215,9 @@ public class Renderer extends View {
     }
 
     public static File getTileRoot() {
+        return new File("/storage/sdcard0", "tiles");
 //        return new File("/storage/extSdCard", "tiles");
-        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
+//        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
     }
 
     /** Populate the structure of available tiles. */
@@ -396,8 +448,10 @@ public class Renderer extends View {
     }
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile) {
-        drawPointsOfInterest(canvas, tile, pointsOfInterest, Paints.POINT_OF_INTEREST, Paints.POINT_OF_INTEREST_OUTLINE);
-        drawPointsOfInterest(canvas, tile, waypoints, Paints.WAYPOINT, Paints.WAYPOINT_OUTLINE);
+        if (pointsOfInterest != null)
+            drawPointsOfInterest(canvas, tile, pointsOfInterest, Paints.POINT_OF_INTEREST, Paints.POINT_OF_INTEREST_OUTLINE);
+        if (waypoints != null)
+            drawPointsOfInterest(canvas, tile, waypoints, Paints.WAYPOINT, Paints.WAYPOINT_OUTLINE);
     }
 
     private void drawPointsOfInterest(Canvas canvas, Tile tile, List<PointOfInterest> pois,
@@ -631,8 +685,12 @@ public class Renderer extends View {
 //        log("Draw tiles");
 
         drawGPSMarker(canvas);
-        drawScaleMarker(canvas);
-        drawGPSStats(canvas);
+//        drawScaleMarker(canvas);
+
+        if (config.navigateEnabled.value)
+            navigate(canvas);
+        else
+            drawGPSStats(canvas);
 
 //        log(String.format("Center = %.0f, %.0f, Scale = %d / %.0f", centerUtmX, centerUtmY, zoomLevel, scaleFactor));
 
@@ -776,14 +834,80 @@ public class Renderer extends View {
     private void drawGPSStats(Canvas canvas) {
         String txt = (int)(gpsSpeed * 3.6 + 0.5) + " km/h   "; // 3.6 for m/s -> km/h
         if (gpsDist < 500) txt += (int)(gpsDist + 0.5) + " m";
-        else txt += String.format("%.2f km", gpsDist *0.001);
-        float wid = Paints.FONT_OUTLINE_GPS_STATS.measureText(txt) * 0.5f;
-        canvas.drawText(txt, (float)screenMidX-wid, Paints.FONT_SIZE_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
-        canvas.drawText(txt, (float)screenMidX-wid, Paints.FONT_SIZE_GPS_STATS, Paints.FONT_GPS_STATS);
-
+        else txt += String.format("%.2f km", gpsDist * 0.001);
+        printCentered(canvas, txt, Paints.FONT_SIZE_GPS_STATS);
     }
 
-    private Rect srcRect = new Rect(1, 1, -1, -1); // left/top will always be 1 (for the 1px border)
+    private void navigate(Canvas canvas) {
+        navigator.updatePosition((int)(gpsX + 0.5), (int)(gpsY + 0.5), gpsSpeed);
+        PointOfInterest p = navigator.getNextWaypoint();
+        if (p != null) {
+            printCentered(canvas, p.label, Paints.FONT_SIZE_GPS_STATS);
+
+            // 3.6 for m/s -> km/h
+//            String stat1 = ""+(int)(gpsSpeed * 3.6 + 0.5);
+//            String stat2 = " km/h";
+//            String stat3 = "     " + navigator.getDistanceToNextWaypoint(); // ‧⋅
+//            String stat4 = " m";
+//            float wid1 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat1);
+//            float wid2 = Paints.FONT_OUTLINE_NAVIGATION_STATS.measureText(stat2);
+//            float wid3 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat3);
+//            float wid4 = Paints.FONT_OUTLINE_NAVIGATION_STATS.measureText(stat4);
+//            float xStart = (float)screenMidX - (wid1 + wid2 + wid3 + wid4) * 0.5f;
+//            float y = Paints.FONT_SIZE_GPS_STATS * 2;
+//            print(canvas, stat1, xStart, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+//            print(canvas, stat2, xStart + wid1, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+//            print(canvas, stat3, xStart + wid1 + wid2, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+//            print(canvas, stat4, xStart + wid1 + wid2 + wid3, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+            String stat1 = ""+(int)(gpsSpeed * 3.6 + 0.5);
+            String stat2 = " km/h";
+            String stat3 = "" + navigator.getDistanceToNextWaypoint();
+            String stat4 = " m";
+            float wid1 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat1);
+            float wid3 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat3);
+            float y = Paints.FONT_SIZE_GPS_STATS * 2;
+            print(canvas, stat1, (float)screenMidX - 175 - wid1, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+            print(canvas, stat2, (float)screenMidX - 175, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+            print(canvas, stat3, (float)screenMidX + 225 - wid3, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+            print(canvas, stat4, (float)screenMidX + 225, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, String.format("%.1f", navigator.getAvgSpeed() * 3.6), " km/h");
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, formatSecondsToMinutes(navigator.getElapsedTime()), " min");
+
+            int x = getWidth() - 208;
+            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, formatSecondsToMinutes(navigator.getElapsedTime() + navigator.getETA()), " ETA");
+            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
+            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, formatSecondsToMinutes(navigator.getETA()), " min");
+        }
+    }
+
+    private void printCentered(Canvas canvas, String text, int y) {
+        float wid = Paints.FONT_OUTLINE_GPS_STATS.measureText(text) * 0.5f;
+        print(canvas, text, (float)screenMidX-wid, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+    }
+
+    private void printNavigationStats(Canvas canvas, int x, int y, String text, String subscript) {
+        float wid = Paints.FONT_OUTLINE_NAVIGATION_STATS.measureText(text);
+        print(canvas, text, x, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+        print(canvas, subscript, x + wid, y, Paints.FONT_NAVIGATION_SUBSCRIPT, Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT);
+    }
+
+    private void print(Canvas canvas, String text, float x, float y, Paint font, Paint outline) {
+        canvas.drawText(text, x, y, outline);
+        canvas.drawText(text, x, y, font);
+    }
+
+    public static String formatSecondsToHours(int seconds) {
+        int hrs = seconds / 3600;
+        return String.format("%d:%02d", hrs, seconds / 60 - hrs * 60);
+    }
+
+    public static String formatSecondsToMinutes(int seconds) {
+        return String.format("%d:%02d", seconds / 60, seconds % 60);
+    }
+
+    private Rect srcRect = new Rect(1, 1, -1, -1); // left/top will always be 1 (for the 1px border), others filled in later
     private Rect dstRect = new Rect(-1, -1, -1, -1);
 
     private void copyTile(Canvas canvas, Bitmap src, float posX, float posY) {
