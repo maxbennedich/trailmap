@@ -1,10 +1,13 @@
 package com.max.route;
 
 import android.os.Bundle;
-import android.os.SystemClock;
 
 import com.max.drawing.Renderer;
 import com.max.main.Persistable;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 /** Note: All distances are squared by default. */
 public class Navigator implements Persistable {
@@ -30,7 +33,7 @@ public class Navigator implements Persistable {
 
     private long lastUpdateMs;
 
-    private int totalStoppedTimeMs = 0;
+    private int totalStoppedTimeMs;
 
     /** Timestamp when navigator was stopped. Used to subtract stopped time from total time. */
     private long stopMs = -1;
@@ -41,6 +44,8 @@ public class Navigator implements Persistable {
 
     /** The waypoint that we are expected to arrive at next. */
     private int nextWaypointIdx;
+
+    private boolean routeCompleted;
 
     /** Maximum number of waypoints to skip if we are arriving at future points. */
     private static final int MAX_SKIP_SIZE = 4;
@@ -53,7 +58,10 @@ public class Navigator implements Persistable {
 
     private float topSpeed;
 
-    private int[] waypointTimesMs;
+    /** End waypoint idx for time given by waypointTimesMs. Making this a list rather than fixed
+     * size array allows it to be cyclical in case the route is repeated. */
+    private ArrayList<Integer> waypointTimesIdx;
+    private ArrayList<Integer> waypointTimesMs;
 
     public Navigator(Renderer renderer) {
         this.renderer = renderer;
@@ -62,9 +70,16 @@ public class Navigator implements Persistable {
             futureStatus[k] = new WaypointStatus();
     }
 
+    private long getTimeMs() {
+        return System.currentTimeMillis();
+    }
+
     public void initRoute() {
-        this.startMs = SystemClock.uptimeMillis();
-        waypointTimesMs = new int[renderer.waypoints.size()];
+        this.startMs = getTimeMs();
+        waypointTimesIdx = new ArrayList<>();
+        waypointTimesMs = new ArrayList<>();
+        routeCompleted = false;
+        totalStoppedTimeMs = 0;
         setNextWaypoint(1);
     }
 
@@ -82,9 +97,11 @@ public class Navigator implements Persistable {
 
         savedInstanceState.putInt(prefix + "nextWaypointIdx", nextWaypointIdx);
         savedInstanceState.putInt(prefix + "lastFutureWaypointArrivedAtIdx", lastFutureWaypointArrivedAtIdx);
+        savedInstanceState.putBoolean(prefix + "routeCompleted", routeCompleted);
 
         savedInstanceState.putFloat(prefix + "topSpeed", topSpeed);
-        savedInstanceState.putIntArray(prefix + "waypointTimesMs", waypointTimesMs);
+        savedInstanceState.putIntegerArrayList(prefix + "waypointTimesIdx", waypointTimesIdx);
+        savedInstanceState.putIntegerArrayList(prefix + "waypointTimesMs", waypointTimesMs);
 
         leavingWaypointHistory.saveInstanceState(savedInstanceState, "leavingWaypointHistory");
         gpsStationaryHistory.saveInstanceState(savedInstanceState, "gpsStationaryHistory");
@@ -107,9 +124,11 @@ public class Navigator implements Persistable {
 
         nextWaypointIdx = savedInstanceState.getInt(prefix + "nextWaypointIdx");
         lastFutureWaypointArrivedAtIdx = savedInstanceState.getInt(prefix + "lastFutureWaypointArrivedAtIdx");
+        routeCompleted = savedInstanceState.getBoolean(prefix + "routeCompleted");
 
         topSpeed = savedInstanceState.getFloat(prefix + "topSpeed");
-        waypointTimesMs = savedInstanceState.getIntArray(prefix + "waypointTimesMs");
+        waypointTimesMs = savedInstanceState.getIntegerArrayList(prefix + "waypointTimesMs");
+        waypointTimesIdx = savedInstanceState.getIntegerArrayList(prefix + "waypointTimesIdx");
 
         leavingWaypointHistory.restoreInstanceState(savedInstanceState, "leavingWaypointHistory");
         gpsStationaryHistory.restoreInstanceState(savedInstanceState, "gpsStationaryHistory");
@@ -176,8 +195,12 @@ public class Navigator implements Persistable {
     }
 
     public void updatePosition(int utmX, int utmY, float speed) {
-        long curTime = SystemClock.uptimeMillis();
+        if (routeCompleted)
+            return;
+
+        long curTime = getTimeMs();
         lastUpdateMs = curTime;
+        lastUpdatedStoppedTime = getRealTimeStoppedTime();
 
         this.utmX = utmX;
         this.utmY = utmY;
@@ -207,7 +230,11 @@ public class Navigator implements Persistable {
         for (int futureIdx = 0; futureIdx < futureStatus.length; ++futureIdx) {
             if (futureStatus[futureIdx].updatePosition(utmX, utmY)) {
                 if (futureIdx == 0 || futureIdx == lastFutureWaypointArrivedAtIdx + 1) {
-                    setNextWaypoint(nextWaypointIdx + 1 + futureIdx);
+                    int nextIdx = clamp(nextWaypointIdx + 1 + futureIdx);
+                    if (nextWaypointIdx == 0)
+                        routeCompleted(nextIdx);
+                    else
+                        setNextWaypoint(nextIdx);
                     break;
                 } else {
                     // arrived at a point without just having arrived at the previous point
@@ -219,25 +246,62 @@ public class Navigator implements Persistable {
         updateStats();
     }
 
+    /** @return Input waypoint index clamped to 0-size range. */
+    private int clamp(int idx) {
+        return (idx + renderer.waypoints.size()) % renderer.waypoints.size();
+    }
+
     /** This method accepts indexes outside the range and will wrap them into range correctly. */
     public void setNextWaypoint(int idx) {
-        idx = (idx + renderer.waypoints.size()) % renderer.waypoints.size();
-        int prev = (idx + renderer.waypoints.size() - 1) % renderer.waypoints.size();
-        waypointTimesMs[prev] = (int)(SystemClock.uptimeMillis() - startMs - totalStoppedTimeMs);
+        idx = clamp(idx);
+        addWaypointTime(idx);
 
         nextWaypointIdx = idx;
         for (int k = 0; k < futureStatus.length; ++k)
-            futureStatus[k].init((nextWaypointIdx + k) % renderer.waypoints.size());
+            futureStatus[k].init(clamp(nextWaypointIdx + k));
         lastFutureWaypointArrivedAtIdx = -1;
     }
 
+    /** Called when all waypoints in the route have been reached. */
+    private void routeCompleted(int nextIdx) {
+        NavigationLogger.routeCompleted();
+
+        addWaypointTime(nextIdx);
+        stop();
+        routeCompleted = true;
+    }
+
+    private void addWaypointTime(int idx) {
+        int prev = clamp(idx - 1);
+        NavigationLogger.arrivedWaypoint(prev);
+        waypointTimesIdx.add(prev);
+        waypointTimesMs.add((int)(getTimeMs() - startMs - getStoppedTime()));
+    }
+
     public void start() {
-        if (stopMs != -1)
-            totalStoppedTimeMs += SystemClock.uptimeMillis() - stopMs;
+        NavigationLogger.startNavigation();
+        if (stopMs != -1) {
+            totalStoppedTimeMs += getTimeMs() - stopMs;
+            stopMs = -1;
+        }
     }
 
     public void stop() {
-        stopMs = SystemClock.uptimeMillis();
+        NavigationLogger.stopNavigation();
+        stopMs = getTimeMs();
+    }
+
+    /** In ms. */
+    private int getStoppedTime() {
+        return lastUpdatedStoppedTime;
+    }
+
+    /** In ms. */
+    private int getRealTimeStoppedTime() {
+        int t = totalStoppedTimeMs;
+        if (stopMs != -1 && !routeCompleted)
+            t += getTimeMs() - stopMs;
+        return t;
     }
 
     /** @return True if we are not moving (and haven't been for a while). */
@@ -268,9 +332,10 @@ public class Navigator implements Persistable {
     private int distanceTraveled;
     private int distanceToNextWaypoint;
     private int totalTimeElapsed;
+    private int lastUpdatedStoppedTime;
 
     private void updateStats() {
-        int prevIdx = (nextWaypointIdx + renderer.waypoints.size() - 1) % renderer.waypoints.size();
+        int prevIdx = clamp(nextWaypointIdx - 1);
 
         int routeIdxDiff = (nextWaypointIdx == 0 ? renderer.points.nrPoints : renderer.waypoints.get(nextWaypointIdx).routeIndex) - renderer.waypoints.get(prevIdx).routeIndex;
         int nearestRouteIdx = renderer.segmentQuadRoots[prevIdx].getNearestNeighbor(utmX, utmY, renderer.points);
@@ -325,49 +390,58 @@ public class Navigator implements Persistable {
 
     /** In meters / second. */
     public float getAvgSpeed() {
-        return (float) getDistanceTraveled() / getElapsedTime();
+        int elapsedTime = getElapsedTime();
+        return elapsedTime == 0 ? 0 : (float) getDistanceTraveled() / elapsedTime;
     }
 
     /** In meters / second. */
     public float getTopSpeed() {
-        return (float) topSpeed;
+        return topSpeed;
     }
 
-    /** In seconds. */
+    /** In seconds. Not including stopped time. */
     public int getElapsedTime() {
-        return totalTimeElapsed - (totalStoppedTimeMs + 500) / 1000;
+        return totalTimeElapsed - (getStoppedTime() + 500) / 1000;
     }
 
-    /** In seconds. */
-    public void setElapsedTime(int timeElapsedSec) {
-        startMs = lastUpdateMs - (long)timeElapsedSec * 1000;
+    public void setStartTime(Date startTime) {
+        startMs = startTime.getTime();
     }
 
     /** @return Estimated time of arrival (assuming a loop starting and ending at waypoint 0). */
-    public int getETA() {
-        int totalTime = (int)(getElapsedTime() / ((float) getDistanceTraveled() / getTotalDistance()) + 0.5);
-        return totalTime;
+    public Date getETA() {
+        return new Date(startMs + getTotalTime() * 1000 + getStoppedTime());
+    }
+
+    /** In seconds, excluding stopped time. */
+    private int getTotalTime() {
+        return (int)(getElapsedTime() / ((float) getDistanceTraveled() / getTotalDistance()) + 0.5);
+    }
+
+    /** In seconds. */
+    public int getRemainingTime() {
+        return getTotalTime() - getElapsedTime();
     }
 
     public String getNavigationStats() {
         String stats = "ROUTE STATISTICS\n" +
                 String.format("Dist traveled: %.1f km%n", getDistanceTraveled() * 0.001f) +
                 String.format("Avg speed: %.1f km/h%n", getAvgSpeed() * 3.6) +
-                String.format("Elapsed time: %s hrs%n", Renderer.formatSecondsToHours(getElapsedTime())) +
-                String.format("Stopped time: %s hrs%n", Renderer.formatSecondsToHours((totalStoppedTimeMs + 500) / 1000)) +
+                String.format("Elapsed time: %s%n", Renderer.formatSeconds(getElapsedTime())) +
+                String.format("Stopped time: %s%n", Renderer.formatSeconds((getStoppedTime() + 500) / 1000)) +
                 String.format("Dist remaining: %.1f km%n", (getTotalDistance() - getDistanceTraveled()) * 0.001f) +
                 String.format("Top speed: %.1f km/h%n", getTopSpeed() * 3.6) +
                 "\n" +
                 "WAYPOINTS\n";
 
-        for (int idx = 0; idx < nextWaypointIdx - 1; ++idx) {
-            int nxt = (idx + 1) % renderer.waypoints.size();
-            int diffMs = waypointTimesMs[nxt] - waypointTimesMs[idx];
-            stats += String.format("%s  %d m  %s min  %.1f km/h%n",
-                    renderer.waypoints.get(nxt).name,
-                    SegmentDistances.SEGMENT_DISTANCES[idx][2],
-                    Renderer.formatSecondsToMinutes((diffMs + 500) / 1000),
-                    (float)SegmentDistances.SEGMENT_DISTANCES[idx][2] * 3600f / diffMs);
+        for (int k = 1; k < waypointTimesIdx.size(); ++k) {
+            int idx = waypointTimesIdx.get(k), prev = waypointTimesIdx.get(k-1);
+            int diffMs = waypointTimesMs.get(k) - waypointTimesMs.get(k-1);
+            stats += String.format("%s  %d m  %s  %.1f km/h%n",
+                    renderer.waypoints.get(idx).name,
+                    SegmentDistances.SEGMENT_DISTANCES[prev][2],
+                    Renderer.formatSeconds((diffMs + 500) / 1000),
+                    (float)SegmentDistances.SEGMENT_DISTANCES[prev][2] * 3600f / diffMs);
         }
 
         return stats;

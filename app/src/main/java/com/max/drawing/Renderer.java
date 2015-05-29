@@ -36,9 +36,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.DateFormat;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -860,13 +863,13 @@ public class Renderer extends View implements Persistable {
             print(canvas, stat4, (float)screenMidX + 225, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
 
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, String.format("%.1f", navigator.getAvgSpeed() * 3.6), " km/h");
-            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
-            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, formatSecondsToMinutes(navigator.getElapsedTime()), " min");
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, formatSeconds(navigator.getElapsedTime()), " elapsed");
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
 
-            int x = getWidth() - 208;
-            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, formatSecondsToMinutes(navigator.getElapsedTime() + navigator.getETA()), " ETA");
-            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
-            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, formatSecondsToMinutes(navigator.getETA()), " min");
+            int x = getWidth() - 220;
+            printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
+            printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
+            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
         }
     }
 
@@ -881,18 +884,27 @@ public class Renderer extends View implements Persistable {
         print(canvas, subscript, x + wid, y, Paints.FONT_NAVIGATION_SUBSCRIPT, Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT);
     }
 
+    private void printNavigationStatsPre(Canvas canvas, int x, int y, String subscript, String text) {
+        float wid = Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT.measureText(subscript);
+        print(canvas, subscript, x - wid, y, Paints.FONT_NAVIGATION_SUBSCRIPT, Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT);
+        print(canvas, text, x, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+    }
+
     private void print(Canvas canvas, String text, float x, float y, Paint font, Paint outline) {
         canvas.drawText(text, x, y, outline);
         canvas.drawText(text, x, y, font);
     }
 
-    public static String formatSecondsToHours(int seconds) {
-        int hrs = seconds / 3600;
-        return String.format("%d:%02d", hrs, seconds / 60 - hrs * 60);
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm:ss");
+    public static String formatTime(Date time) {
+        return TIME_FORMAT.format(time);
     }
 
-    public static String formatSecondsToMinutes(int seconds) {
-        return String.format("%d:%02d", seconds / 60, seconds % 60);
+    public static String formatSeconds(int seconds) {
+        int hrs = seconds / 3600;
+        return hrs > 0 ?
+                String.format("%d:%02d:%02d", hrs, seconds / 60 - hrs*60, seconds % 60) :
+                String.format("%d:%02d", seconds / 60, seconds % 60);
     }
 
     private Rect srcRect = new Rect(1, 1, -1, -1); // left/top will always be 1 (for the 1px border), others filled in later

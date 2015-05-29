@@ -15,6 +15,7 @@ import com.max.location.LocationListenerWithPreviousLocation;
 import com.max.location.LocationServiceController;
 import com.max.logic.XYd;
 import com.max.route.NavigationConfigDialog;
+import com.max.route.NavigationLogger;
 import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
@@ -39,6 +40,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 public class Controller extends Activity implements NavigationConfigDialog.NavigationConfigDialogListener {
@@ -58,6 +60,8 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.d("LogStats", "Starting onCreate");
+        NavigationLogger.appStarted();
+
         LogStats onCreateTimer = new LogStats();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
@@ -204,11 +208,11 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
     }
 
     @Override
-    public void updateNavigationConfig(Integer lastWaypointIdx, Integer elapsedTimeMin) {
+    public void updateNavigationConfig(Integer lastWaypointIdx, Date startTime) {
         if (lastWaypointIdx != null)
             renderer.navigator.setNextWaypoint(lastWaypointIdx + 1);
-        if (elapsedTimeMin != null)
-            renderer.navigator.setElapsedTime(elapsedTimeMin * 60);
+        if (startTime != null)
+            renderer.navigator.setStartTime(startTime);
     }
 
     @Override
@@ -329,15 +333,16 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
         @Override public void onLocationChanged(Location location) {
             super.onLocationChanged(location);
 
-            // TODO use nanos, not getTime
-//            Log.d("OptiMap", String.format("source=%s, lat=%.4f, long=%.4f, bearing=%.4f (%s), accuracy=%.4f, time=%d",
-//                    location.getProvider(), location.getLatitude(), location.getLongitude(), location.getBearing(), location.hasBearing(), location.getAccuracy(), location.getTime()));
+            // TODO use time provided by location?
             XYd xy = LatLngHelper.getXYdFromLatLng(location.getLatitude(), location.getLongitude());
+            NavigationLogger.gpsUpdate(location, xy.x, xy.y);
+
             renderer.setGPSCoordinate(xy.x, xy.y);
             if (location.hasBearing())
                 renderer.setGPSBearing(location.getBearing());
             if (location.hasSpeed())
                 renderer.setGPSSpeed(location.getSpeed());
+
             renderer.invalidate();
         }
     };
