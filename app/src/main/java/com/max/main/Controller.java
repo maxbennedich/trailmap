@@ -32,6 +32,7 @@ import android.util.Log;
 import android.app.Activity;
 import android.view.Display;
 import android.view.Surface;
+import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.SeekBar;
 
@@ -82,6 +83,8 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
         loadRoute();
 
         renderer.navigator.initRoute();
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         onCreateTimer.log("onCreate finished");
     }
@@ -251,8 +254,7 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
         // with capacity 64, for a total of 1100-1250 ms. For comparison, deserializing the points
         // and the built tree from a pre-calculated resource took 2700 ms, i.e. >2 times slower.
         loadTimer.reset();
-//        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_612878m);
-        InputStream is = getResources().openRawResource(R.raw.lidingo_waypoint_experiment);
+        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_one_way_567919m);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
         QuadPointArray points;
         try {
@@ -300,10 +302,8 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
 
     private void loadPointsOfInterest() {
         loadTimer.reset();
-//        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
-//        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
-        renderer.waypoints = loadPointsOfInterest(R.raw.lidingo_waypoint_experiment_pois, true);
-        renderer.pointsOfInterest = null;
+        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
+        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
         loadTimer.log("Loaded points of interest");
     }
 

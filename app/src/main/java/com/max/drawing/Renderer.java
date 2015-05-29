@@ -96,8 +96,8 @@ public class Renderer extends View implements Persistable {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-    private double centerUtmX = 673_905, centerUtmY = 6_581_834; // holländargatan
-//    private double centerUtmX = 696_910, centerUtmY = 6_393_950; // visby
+//    private double centerUtmX = 673_905, centerUtmY = 6_581_834; // holländargatan
+    private double centerUtmX = 696_910, centerUtmY = 6_393_950; // visby
     private double gpsX = centerUtmX+100, gpsY = centerUtmY;
     private float gpsBearing;
     private float gpsSpeed;
@@ -218,8 +218,8 @@ public class Renderer extends View implements Persistable {
     }
 
     public static File getTileRoot() {
-        return new File("/storage/sdcard0", "tiles");
-//        return new File("/storage/extSdCard", "tiles");
+//        return new File("/storage/sdcard0", "tiles");
+        return new File("/storage/extSdCard", "tiles");
 //        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
     }
 
@@ -530,7 +530,7 @@ public class Renderer extends View implements Persistable {
 
     // level of detail configs below have been empirically tested to be visibly acceptable
     private static final PathConfiguration ROUTE_PATH = new PathConfiguration(
-            new PathLevelOfDetail(new int[] {11,10,9,8,7,7,6,5,4,3,0}), true, Paints.PATH_WIDTH);
+            new PathLevelOfDetail(new int[] {11,10,9,8,7,7,6,5,4,3,0}), Navigator.CYCLIC_ROUTE, Paints.PATH_WIDTH);
 
     // level of detail configs below have been empirically tested to be visibly acceptable
     private static final PathConfiguration GPS_PATH = new PathConfiguration(

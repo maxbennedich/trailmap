@@ -38,7 +38,7 @@ public class Navigator implements Persistable {
     /** Timestamp when navigator was stopped. Used to subtract stopped time from total time. */
     private long stopMs = -1;
 
-    private final GPSHistory leavingWaypointHistory = new GPSHistory(2000, 3);
+    private final GPSHistory leavingWaypointHistory = new GPSHistory(5000, 3);
 
     private final GPSHistory gpsStationaryHistory = new GPSHistory(1000, 60);
 
@@ -230,8 +230,8 @@ public class Navigator implements Persistable {
         for (int futureIdx = 0; futureIdx < futureStatus.length; ++futureIdx) {
             if (futureStatus[futureIdx].updatePosition(utmX, utmY)) {
                 if (futureIdx == 0 || futureIdx == lastFutureWaypointArrivedAtIdx + 1) {
-                    int nextIdx = clamp(nextWaypointIdx + 1 + futureIdx);
-                    if (nextWaypointIdx == 0)
+                    int nextIdx = clampIdx(nextWaypointIdx + 1 + futureIdx);
+                    if (nextWaypointIdx == (CYCLIC_ROUTE ? 0 : renderer.waypoints.size()-1))
                         routeCompleted(nextIdx);
                     else
                         setNextWaypoint(nextIdx);
@@ -247,18 +247,24 @@ public class Navigator implements Persistable {
     }
 
     /** @return Input waypoint index clamped to 0-size range. */
-    private int clamp(int idx) {
+    private int clampIdx(int idx) {
         return (idx + renderer.waypoints.size()) % renderer.waypoints.size();
+    }
+
+    /** @return Input waypoint index clamped to 0-size range. */
+    private int clampSegment(int idx) {
+        int segmentSize = renderer.waypoints.size() - (CYCLIC_ROUTE ? 0 : 1);
+        return (idx + segmentSize) % segmentSize;
     }
 
     /** This method accepts indexes outside the range and will wrap them into range correctly. */
     public void setNextWaypoint(int idx) {
-        idx = clamp(idx);
+        idx = clampIdx(idx);
         addWaypointTime(idx);
 
         nextWaypointIdx = idx;
         for (int k = 0; k < futureStatus.length; ++k)
-            futureStatus[k].init(clamp(nextWaypointIdx + k));
+            futureStatus[k].init(clampIdx(nextWaypointIdx + k));
         lastFutureWaypointArrivedAtIdx = -1;
     }
 
@@ -272,7 +278,7 @@ public class Navigator implements Persistable {
     }
 
     private void addWaypointTime(int idx) {
-        int prev = clamp(idx - 1);
+        int prev = clampIdx(idx - 1);
         NavigationLogger.arrivedWaypoint(prev);
         waypointTimesIdx.add(prev);
         waypointTimesMs.add((int)(getTimeMs() - startMs - getStoppedTime()));
@@ -335,16 +341,17 @@ public class Navigator implements Persistable {
     private int lastUpdatedStoppedTime;
 
     private void updateStats() {
-        int prevIdx = clamp(nextWaypointIdx - 1);
+        int prevIdxIdx = clampIdx(nextWaypointIdx - 1);
+        int prevSegmentIdx = clampSegment(nextWaypointIdx - 1);
 
-        int routeIdxDiff = (nextWaypointIdx == 0 ? renderer.points.nrPoints : renderer.waypoints.get(nextWaypointIdx).routeIndex) - renderer.waypoints.get(prevIdx).routeIndex;
-        int nearestRouteIdx = renderer.segmentQuadRoots[prevIdx].getNearestNeighbor(utmX, utmY, renderer.points);
+        int routeIdxDiff = (nextWaypointIdx == 0 ? renderer.points.nrPoints : renderer.waypoints.get(nextWaypointIdx).routeIndex) - renderer.waypoints.get(prevIdxIdx).routeIndex;
+        int nearestRouteIdx = renderer.segmentQuadRoots[prevIdxIdx].getNearestNeighbor(utmX, utmY, renderer.points);
 
         // TODO: This is slightly inaccurate (typically +- a few percent) since it equates index
         // with distance which is not correct since a diagonal route is sqrt(2) times the distance
         // of a straight route. A better way would be to store the distance for each route point.
-        int distanceFromPrevWaypoint = (int)((float)(nearestRouteIdx - renderer.waypoints.get(prevIdx).routeIndex) / routeIdxDiff * SegmentDistances.SEGMENT_DISTANCES[prevIdx][2] + 0.5);
-        distanceToNextWaypoint = SegmentDistances.SEGMENT_DISTANCES[prevIdx][2] - distanceFromPrevWaypoint;
+        int distanceFromPrevWaypoint = (int)((float)(nearestRouteIdx - renderer.waypoints.get(prevIdxIdx).routeIndex) / routeIdxDiff * SegmentDistances.SEGMENT_DISTANCES[prevSegmentIdx][2] + 0.5);
+        distanceToNextWaypoint = SegmentDistances.SEGMENT_DISTANCES[prevSegmentIdx][2] - distanceFromPrevWaypoint;
 
         // In case we've left the route, use aerial distance as a minimum bound.
         // (If, for example, we are approaching the point from the opposite direction than
@@ -353,7 +360,7 @@ public class Navigator implements Persistable {
         if ((long)distanceToNextWaypoint*distanceToNextWaypoint < aerialDistance2)
             distanceToNextWaypoint = (int)(Math.sqrt(aerialDistance2) + 0.5f);
 
-        distanceTraveled = SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[prevIdx] + distanceFromPrevWaypoint;
+        distanceTraveled = SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[prevSegmentIdx] + distanceFromPrevWaypoint;
 
         totalTimeElapsed = (int)((lastUpdateMs - startMs + 500) / 1000);
     }
@@ -378,9 +385,11 @@ public class Navigator implements Persistable {
         return distanceTraveled;
     }
 
+    public static final boolean CYCLIC_ROUTE = false;
+
     /** In meters. */
     public int getTotalDistance() {
-        return SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[renderer.waypoints.size()];
+        return SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[renderer.waypoints.size() - (CYCLIC_ROUTE ? 0 : 1)];
     }
 
     /** In meters. */
