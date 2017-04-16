@@ -20,14 +20,17 @@ import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
+import android.Manifest;
 import android.app.DialogFragment;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Point;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
 import android.util.Log;
 import android.app.Activity;
 import android.view.Display;
@@ -43,6 +46,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+
+import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
+import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 public class Controller extends Activity implements NavigationConfigDialog.NavigationConfigDialogListener {
 
@@ -61,6 +69,9 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.d("LogStats", "Starting onCreate");
+
+        ensurePermissions();
+
         NavigationLogger.appStarted();
 
         LogStats onCreateTimer = new LogStats();
@@ -115,6 +126,19 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
 //        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
 //        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
 //        }
+    }
+
+    private static final String[] PERMISSIONS = { ACCESS_FINE_LOCATION, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE };
+    private void ensurePermissions() {
+        boolean hasAllPermissions = true;
+        for (String permission : PERMISSIONS) {
+            if (ActivityCompat.checkSelfPermission(this, permission) != PERMISSION_GRANTED) {
+                hasAllPermissions = false;
+                break;
+            }
+        }
+        if (!hasAllPermissions)
+            ActivityCompat.requestPermissions(this, PERMISSIONS, 1);
     }
 
     private void createMenu() {
@@ -254,7 +278,7 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
         // with capacity 64, for a total of 1100-1250 ms. For comparison, deserializing the points
         // and the built tree from a pre-calculated resource took 2700 ms, i.e. >2 times slower.
         loadTimer.reset();
-        InputStream is = getResources().openRawResource(R.raw.gotland_all_roads_one_way_567919m);
+        InputStream is = getResources().openRawResource(Settings.ROUTE_RESOURCE);
         BinaryRouteLoader routeLoader = new BinaryRouteLoader();
         QuadPointArray points;
         try {
@@ -302,8 +326,8 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
 
     private void loadPointsOfInterest() {
         loadTimer.reset();
-        renderer.waypoints = loadPointsOfInterest(R.raw.gotland_waypoints, true);
-        renderer.pointsOfInterest = loadPointsOfInterest(R.raw.gotland_pois, false);
+        renderer.waypoints = loadPointsOfInterest(Settings.WAYPOINTS_RESOURCE, Settings.WAYPOINTS_NUMBERED);
+        renderer.pointsOfInterest = loadPointsOfInterest(Settings.POINTS_OF_INTEREST_RESOURCE, false);
         loadTimer.log("Loaded points of interest");
     }
 

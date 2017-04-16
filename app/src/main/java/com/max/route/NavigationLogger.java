@@ -1,9 +1,13 @@
 package com.max.route;
 
 import android.location.Location;
+import android.os.Environment;
 import android.util.Log;
 
+import com.max.main.Settings;
+
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -18,8 +22,6 @@ import java.util.Date;
  */
 public class NavigationLogger {
     private static final DateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-
-    private static final String LOG_FILE = "/storage/sdcard0/optimap/navigationLog.txt";
 
     /** This number is used to avoid opening and closing the log file too often in case of
      * frequent log writes. GPS fixes for example tend to arrive one per second. */
@@ -75,11 +77,11 @@ public class NavigationLogger {
     private static void log(String str, boolean flush) {
         LOG[logIdx++] = getTimestamp() + " " + str;
         if (flush || logIdx == LOG_CACHE_SIZE) {
-            try (PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(LOG_FILE, true)))) {
+            try (PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(Settings.NAVIGATION_LOG_FILE, true)))) {
                 for (int r = 0; r < logIdx; ++r)
                     out.println(LOG[r]);
             } catch (IOException ioe) {
-                Log.e(NavigationLogger.class.getSimpleName(), "Error writing to log file (" + LOG_FILE + ")", ioe);
+                Log.e(NavigationLogger.class.getSimpleName(), "Error writing to log file (" + Settings.NAVIGATION_LOG_FILE + ")", ioe);
             }
             logIdx = 0;
         }

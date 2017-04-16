@@ -24,6 +24,7 @@ import com.max.config.Config;
 import com.max.main.LogStats;
 import com.max.main.Persistable;
 import com.max.main.R;
+import com.max.main.Settings;
 import com.max.route.Navigator;
 import com.max.route.PathConfiguration;
 import com.max.route.PathLevelOfDetail;
@@ -96,9 +97,8 @@ public class Renderer extends View implements Persistable {
     /** Contains all tile indices for which we have a tile on disk. */
     private Set<Integer> existingTiles = new HashSet<>();
 
-//    private double centerUtmX = 673_905, centerUtmY = 6_581_834; // holländargatan
-    private double centerUtmX = 696_910, centerUtmY = 6_393_950; // visby
-    private double gpsX = centerUtmX+100, gpsY = centerUtmY;
+    private double centerUtmX = Settings.START_CENTER_UTM_X, centerUtmY = Settings.START_CENTER_UTM_Y;
+    private double gpsX = centerUtmX, gpsY = centerUtmY;
     private float gpsBearing;
     private float gpsSpeed;
     private float gpsDist = 0;
@@ -218,9 +218,7 @@ public class Renderer extends View implements Persistable {
     }
 
     public static File getTileRoot() {
-//        return new File("/storage/sdcard0", "tiles");
-        return new File("/storage/extSdCard", "tiles");
-//        return new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "tiles");
+        return Settings.TILE_ROOT_PATH;
     }
 
     /** Populate the structure of available tiles. */
@@ -774,7 +772,7 @@ public class Renderer extends View implements Persistable {
     }
 
     /** in pixels */
-    private static final int SCALE_MARKER_WIDTH = 256;
+    private static final int SCALE_MARKER_WIDTH = Paints.PAINT_SETTINGS.scaleMarkerWidth();
 
     /** Pre-generated labels for the scale marker (to avoid building strings while drawing). */
     private static final String[] SCALE_LABELS = generateScaleLabels();
@@ -857,16 +855,16 @@ public class Renderer extends View implements Persistable {
             float wid1 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat1);
             float wid3 = Paints.FONT_OUTLINE_GPS_STATS.measureText(stat3);
             float y = Paints.FONT_SIZE_GPS_STATS * 2;
-            print(canvas, stat1, (float)screenMidX - 175 - wid1, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
-            print(canvas, stat2, (float)screenMidX - 175, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
-            print(canvas, stat3, (float)screenMidX + 225 - wid3, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
-            print(canvas, stat4, (float)screenMidX + 225, y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+            print(canvas, stat1, (float)screenMidX + Paints.PAINT_SETTINGS.navigationSpeedOffsetFromCenter() - wid1, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+            print(canvas, stat2, (float)screenMidX + Paints.PAINT_SETTINGS.navigationSpeedOffsetFromCenter(), y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+            print(canvas, stat3, (float)screenMidX + Paints.PAINT_SETTINGS.navigationDistOffsetFromCenter() - wid3, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
+            print(canvas, stat4, (float)screenMidX + Paints.PAINT_SETTINGS.navigationDistOffsetFromCenter(), y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
 
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, String.format("%.1f", navigator.getAvgSpeed() * 3.6), " km/h");
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, formatSeconds(navigator.getElapsedTime()), " elapsed");
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
 
-            int x = getWidth() - 220;
+            int x = getWidth() - Paints.PAINT_SETTINGS.navigationStatsOffsetFromRightEdge();
             printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
             printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
             printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
@@ -1031,7 +1029,7 @@ public class Renderer extends View implements Persistable {
     private void scaleFactorUpdated() {
         scaleFactor = Math.max(minZoomFitsOnScreen, Math.min(MAX_SCALE, scaleFactor));
 
-        zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor+(1e-12)));
+        zoomLevel = 31 - Integer.numberOfLeadingZeros((int)(scaleFactor / Paints.PAINT_SETTINGS.tileScaleFactor() + (1e-12)));
         zoomLevel = Math.max(MIN_ZOOM_LEVEL, Math.min(MAX_ZOOM_LEVEL, zoomLevel));
         scalingZoom = scaleFactor / (1 << zoomLevel);
     }

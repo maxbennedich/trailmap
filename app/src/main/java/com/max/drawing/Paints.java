@@ -6,23 +6,25 @@ import android.graphics.PorterDuffXfermode;
 
 public class Paints {
 
-    public static final int FONT_SIZE_POI = 20;
+    public static PaintSettings PAINT_SETTINGS = new PaintSettings.GalaxyS6();
+
+    public static final int FONT_SIZE_POI = PAINT_SETTINGS.fontSizePoi();
     public static final Paint FONT_POI = pb().color(0xffffffff).textSize(FONT_SIZE_POI).antialias().get();
     public static final Paint FONT_OUTLINE_POI = pb().color(0xff000000).textSize(FONT_SIZE_POI).stroke(4).antialias().get();
 
-    public static final int FONT_SIZE_SCALE = 22;
+    public static final int FONT_SIZE_SCALE = PAINT_SETTINGS.fontSizeScale();
     public static final Paint FONT_SCALE = pb().color(0xffffffff).textSize(FONT_SIZE_SCALE).antialias().get();
     public static final Paint FONT_OUTLINE_SCALE = pb().color(0xff000000).textSize(FONT_SIZE_SCALE).stroke(4).antialias().get();
 
-    public static final int FONT_SIZE_NAVIGATION_STATS = 72;
+    public static final int FONT_SIZE_NAVIGATION_STATS = PAINT_SETTINGS.fontSizeNavigationStats();
     public static final Paint FONT_NAVIGATION_STATS = pb().color(0xffffffff).textSize(FONT_SIZE_NAVIGATION_STATS).antialias().get();
     public static final Paint FONT_OUTLINE_NAVIGATION_STATS = pb().color(0xff000000).textSize(FONT_SIZE_NAVIGATION_STATS).stroke(6).antialias().get();
 
-    public static final int FONT_SIZE_NAVIGATION_SUBSCRIPT = 48;
+    public static final int FONT_SIZE_NAVIGATION_SUBSCRIPT = PAINT_SETTINGS.fontSizeNavigationSubscript();
     public static final Paint FONT_NAVIGATION_SUBSCRIPT = pb().color(0xffffffff).textSize(FONT_SIZE_NAVIGATION_SUBSCRIPT).antialias().get();
     public static final Paint FONT_OUTLINE_NAVIGATION_SUBSCRIPT = pb().color(0xff000000).textSize(FONT_SIZE_NAVIGATION_SUBSCRIPT).stroke(5).antialias().get();
 
-    public static final int FONT_SIZE_GPS_STATS = 112;
+    public static final int FONT_SIZE_GPS_STATS = PAINT_SETTINGS.fontSizeGPSStats();
     public static final Paint FONT_GPS_STATS = pb().color(0xffffffff).textSize(FONT_SIZE_GPS_STATS).antialias().get();
     public static final Paint FONT_OUTLINE_GPS_STATS = pb().color(0xff000000).textSize(FONT_SIZE_GPS_STATS).stroke(8).antialias().get();
 

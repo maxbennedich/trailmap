@@ -7,11 +7,11 @@ import com.max.main.Persistable;
 public class Config implements Persistable {
     public OptionValue<Boolean> showGpsTrace = new OptionValue<>(false);
     public OptionValue<Boolean> followGps = new OptionValue<>(false);
-    public OptionValue<Boolean> showRoute = new OptionValue<>(true);
-    public OptionValue<Boolean> showPointsOfInterest = new OptionValue<>(true);
+    public OptionValue<Boolean> showRoute = new OptionValue<>(false);
+    public OptionValue<Boolean> showPointsOfInterest = new OptionValue<>(false);
 
     /** Navigate mode, tracking progress along waypoints. */
-    public OptionValue<Boolean> navigateEnabled = new OptionValue<>(true);
+    public OptionValue<Boolean> navigateEnabled = new OptionValue<>(false);
 
     public OptionValue<Boolean> gpsEnabled = new OptionValue<>(false);
 
@@ -19,7 +19,7 @@ public class Config implements Persistable {
     public OptionValue<Boolean> mockLocationService = new OptionValue<>(false);
 
     /** Whether user touch will set gps location. (Used for testing.) */
-    public OptionValue<Boolean> touchLocationService = new OptionValue<>(true);
+    public OptionValue<Boolean> touchLocationService = new OptionValue<>(false);
 
     public OptionValue<Boolean> lockOrientation = new OptionValue<>(false);
     public OptionValue<Boolean> resetDistance = new OptionValue<>(false);
