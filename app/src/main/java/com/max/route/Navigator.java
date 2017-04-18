@@ -369,6 +369,17 @@ public class Navigator implements Persistable {
         return renderer.waypoints.get(nextWaypointIdx);
     }
 
+    /** Point of interest with associated navigation data, such as distance and estimated time of arrival. */
+    static class NavigationPOI {
+        PointOfInterest poi;
+        int distance;
+        Date eta;
+    }
+
+    public List<NavigationPOI> getNextPOIs() {
+        return new ArrayList<>();
+    }
+
 //    /** @return A string indicating the progress made. */
 //    public String getRouteProgress() {
 //        int prevIdx = (nextWaypointIdx + renderer.waypoints.size() - 1) % renderer.waypoints.size();

@@ -44,6 +44,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -346,6 +347,8 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
                         new PointOfInterest(name, utmX, utmY, Integer.valueOf(xy[2])));
                 poi.get(n).label = numbered ? String.format("%s (%d)", name, ((n + count - 1) % count) + 1) : name;
             }
+
+            Collections.sort(poi, (a, b) -> Integer.compare(a.routeIndex, b.routeIndex));
 
             return poi;
         } catch (Exception e) {

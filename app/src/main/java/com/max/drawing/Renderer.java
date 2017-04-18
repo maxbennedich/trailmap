@@ -46,6 +46,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -125,7 +126,7 @@ public class Renderer extends View implements Persistable {
                 return tile;
             }
 
-            @Override protected boolean removeEldestEntry(Entry<Integer, Tile> eldest) {
+            @Override protected boolean removeEldestEntry(Map.Entry<Integer, Tile> eldest) {
                 return size() > TILE_CACHE_SIZE;
             }
         };
@@ -864,10 +865,16 @@ public class Renderer extends View implements Persistable {
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, formatSeconds(navigator.getElapsedTime()), " elapsed");
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
 
-            int x = getWidth() - Paints.PAINT_SETTINGS.navigationStatsOffsetFromRightEdge();
-            printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
-            printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
-            printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
+            if (Settings.NAVIGATION_MODE == Settings.NavigationMode.TO_FINISH) {
+                int x = getWidth() - Paints.PAINT_SETTINGS.navigationStatsOffsetFromRightEdge();
+                printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
+                printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
+                printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
+            } else if (Settings.NAVIGATION_MODE == Settings.NavigationMode.POI_BY_POI) {
+
+            } else {
+                throw new IllegalStateException("Unknown navigation mode: " + Settings.NAVIGATION_MODE);
+            }
         }
     }
 

@@ -18,6 +18,8 @@ import java.io.File;
  * To generate the route resource, use the Java program tilerenderer.RouteExporter.
  */
 public class Settings {
+    public enum NavigationMode { TO_FINISH, POI_BY_POI }
+
     public static double START_CENTER_UTM_X = 673_905, START_CENTER_UTM_Y = 6_581_834; // holländargatan
 //    public static double START_CENTER_UTM_X = 696_910, START_CENTER_UTM_Y = 6_393_950; // visby
 //    public static double START_CENTER_UTM_X = 638_959, START_CENTER_UTM_Y = 6_548_129; // mölnbo
@@ -25,6 +27,8 @@ public class Settings {
     public static int ROUTE_RESOURCE = R.raw.sormlandsleden;
     public static int WAYPOINTS_RESOURCE = R.raw.sormlandsleden_waypoints;
     public static int POINTS_OF_INTEREST_RESOURCE = R.raw.sormlandsleden_pois;
+
+    public static NavigationMode NAVIGATION_MODE = NavigationMode.POI_BY_POI;
 
     public static boolean WAYPOINTS_NUMBERED = false; // Gotland: true
 
