@@ -1,11 +1,13 @@
 package com.max.route;
 
 import android.os.Bundle;
+import android.util.Log;
 
 import com.max.drawing.Renderer;
 import com.max.main.Persistable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -30,6 +32,9 @@ public class Navigator implements Persistable {
     private int utmX, utmY;
 
     private long startMs;
+
+    /** The {@link #startMs} time refers to starting at this waypoint. */
+    private int startWaypoint;
 
     private long lastUpdateMs;
 
@@ -75,7 +80,8 @@ public class Navigator implements Persistable {
     }
 
     public void initRoute() {
-        this.startMs = getTimeMs();
+        startMs = getTimeMs();
+        startWaypoint = 0;
         waypointTimesIdx = new ArrayList<>();
         waypointTimesMs = new ArrayList<>();
         routeCompleted = false;
@@ -91,6 +97,7 @@ public class Navigator implements Persistable {
         savedInstanceState.putInt(prefix + "utmY", utmY);
 
         savedInstanceState.putLong(prefix + "startMs", startMs);
+        savedInstanceState.putLong(prefix + "startWaypoint", startWaypoint);
         savedInstanceState.putLong(prefix + "lastUpdateMs", lastUpdateMs);
         savedInstanceState.putInt(prefix + "totalStoppedTimeMs", totalStoppedTimeMs);
         savedInstanceState.putLong(prefix + "stopMs", stopMs);
@@ -118,6 +125,7 @@ public class Navigator implements Persistable {
         utmY = savedInstanceState.getInt(prefix + "utmY");
 
         startMs = savedInstanceState.getLong(prefix + "startMs");
+        startWaypoint = savedInstanceState.getInt(prefix + "startWaypoint");
         lastUpdateMs = savedInstanceState.getLong(prefix + "lastUpdateMs");
         totalStoppedTimeMs = savedInstanceState.getInt(prefix + "totalStoppedTimeMs");
         stopMs = savedInstanceState.getLong(prefix + "stopMs");
@@ -297,12 +305,12 @@ public class Navigator implements Persistable {
         stopMs = getTimeMs();
     }
 
-    /** In ms. */
+    /** @return Stopped time, as of the last position update. In ms. */
     private int getStoppedTime() {
         return lastUpdatedStoppedTime;
     }
 
-    /** In ms. */
+    /** @return Stopped time, as of current time. In ms. */
     private int getRealTimeStoppedTime() {
         int t = totalStoppedTimeMs;
         if (stopMs != -1 && !routeCompleted)
@@ -335,6 +343,7 @@ public class Navigator implements Persistable {
     }
 
     // a few derived fields (calculated by updateStats; no need to persist)
+    private int nearestRouteIdx;
     private int distanceTraveled;
     private int distanceToNextWaypoint;
     private int totalTimeElapsed;
@@ -345,7 +354,7 @@ public class Navigator implements Persistable {
         int prevSegmentIdx = clampSegment(nextWaypointIdx - 1);
 
         int routeIdxDiff = (nextWaypointIdx == 0 ? renderer.points.nrPoints : renderer.waypoints.get(nextWaypointIdx).routeIndex) - renderer.waypoints.get(prevIdxIdx).routeIndex;
-        int nearestRouteIdx = renderer.segmentQuadRoots[prevIdxIdx].getNearestNeighbor(utmX, utmY, renderer.points);
+        nearestRouteIdx = renderer.segmentQuadRoots[prevIdxIdx].getNearestNeighbor(utmX, utmY, renderer.points);
 
         // TODO: This is slightly inaccurate (typically +- a few percent) since it equates index
         // with distance which is not correct since a diagonal route is sqrt(2) times the distance
@@ -360,7 +369,7 @@ public class Navigator implements Persistable {
         if ((long)distanceToNextWaypoint*distanceToNextWaypoint < aerialDistance2)
             distanceToNextWaypoint = (int)(Math.sqrt(aerialDistance2) + 0.5f);
 
-        distanceTraveled = SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[prevSegmentIdx] + distanceFromPrevWaypoint;
+        distanceTraveled = getDistanceToWaypoint(prevSegmentIdx) + distanceFromPrevWaypoint;
 
         totalTimeElapsed = (int)((lastUpdateMs - startMs + 500) / 1000);
     }
@@ -370,14 +379,83 @@ public class Navigator implements Persistable {
     }
 
     /** Point of interest with associated navigation data, such as distance and estimated time of arrival. */
-    static class NavigationPOI {
-        PointOfInterest poi;
-        int distance;
-        Date eta;
+    public static class NavigationPOI {
+        public final PointOfInterest poi;
+        public final String label;
+        public final int distance;
+        public final Date eta;
+
+        public NavigationPOI(PointOfInterest poi, String label, int distance, Date eta) {
+            this.poi = poi;
+            this.label = label;
+            this.distance = distance;
+            this.eta = eta;
+        }
     }
 
-    public List<NavigationPOI> getNextPOIs() {
-        return new ArrayList<>();
+    private static int SHELTERS_TO_LIST = 2;
+    private static int WATERS_TO_LIST = 2;
+    private static int WAYPOINTS_TO_LIST = 4;
+
+    public List<NavigationPOI> getNextPOIsSormlandsleden() {
+        List<NavigationPOI> pois = new ArrayList<>();
+
+        int waypointIdx = nextWaypointIdx;
+        int waypointsFound = 0, sheltersFound = 0, watersFound = 0;
+
+        for (int idx = getNextPOIIndex(); idx <= renderer.pointsOfInterest.size() && (waypointsFound < WAYPOINTS_TO_LIST || sheltersFound < SHELTERS_TO_LIST || watersFound < WATERS_TO_LIST); ++idx) {
+            int routeIdx = idx == renderer.pointsOfInterest.size() ? Integer.MAX_VALUE : renderer.pointsOfInterest.get(idx).routeIndex;
+
+            for (; waypointsFound < WAYPOINTS_TO_LIST && waypointIdx < renderer.waypoints.size() && renderer.waypoints.get(waypointIdx).routeIndex <= routeIdx; ++waypointsFound, ++waypointIdx)
+                pois.add(getNavigationPOI(renderer.waypoints.get(waypointIdx), renderer.waypoints.get(waypointIdx).label.replace("Segment", "Seg")));
+
+            if (idx < renderer.pointsOfInterest.size()) {
+                PointOfInterest poi = renderer.pointsOfInterest.get(idx);
+                if ("Shelter".equals(poi.label) && sheltersFound < SHELTERS_TO_LIST) {
+                    pois.add(getNavigationPOI(poi, poi.label));
+                    ++sheltersFound;
+                } else if (("Well".equals(poi.label) || "Tap".equals(poi.label) || "Pump".equals(poi.label)) && watersFound < WATERS_TO_LIST) {
+                    pois.add(getNavigationPOI(poi, "Water"));
+                    ++watersFound;
+                }
+            }
+        }
+
+        return pois;
+    }
+
+    private int getNextPOIIndex() {
+        PointOfInterest currentPosition = new PointOfInterest(null, 0, 0, nearestRouteIdx);
+        int idx = Collections.binarySearch(renderer.pointsOfInterest, currentPosition, (a, b) -> Integer.compare(a.routeIndex, b.routeIndex));
+        if (idx < 0)
+            idx = ~idx;
+        return idx;
+    }
+
+    /** @return The given point of interest wrapped as a NavigationPOI, containing navigation data to get to the POI.*/
+    NavigationPOI getNavigationPOI(PointOfInterest poi, String label) {
+        int waypointIdx = nextWaypointIdx;
+        for (; poi.routeIndex > renderer.waypoints.get(waypointIdx).routeIndex; ++waypointIdx) ;
+        int lastWaypointIdx = clampSegment(waypointIdx - 1);
+        waypointIdx = clampIdx(waypointIdx);
+
+        // TODO: This is inaccurate since it equates index with distance which is not correct since
+        // the distance between two consecutive route points is not constant.
+        // A better way would be to store the distance for each route point.
+        int routeIdxDiff = (waypointIdx == 0 ? renderer.points.nrPoints : renderer.waypoints.get(waypointIdx).routeIndex) - renderer.waypoints.get(lastWaypointIdx).routeIndex;
+        int dist = getDistanceToWaypoint(lastWaypointIdx);
+        dist += (int)((double)(poi.routeIndex - renderer.waypoints.get(lastWaypointIdx).routeIndex) / routeIdxDiff * SegmentDistances.SEGMENT_DISTANCES[lastWaypointIdx][2] + 0.5);
+        dist -= getDistanceTraveled();
+
+        // Use aerial distance as a minimum bound, since some points may be off the route.
+        long aerialDistance2 = poi.dist2(utmX, utmY);
+        if ((long)dist*dist < aerialDistance2)
+            dist = (int)(Math.sqrt(aerialDistance2) + 0.5);
+
+        double timeToPOISeconds = getElapsedTime() / ((double) getDistanceTraveled() / (dist + getDistanceTraveled()));
+        Date eta = new Date(startMs + getStoppedTime() + (long)(timeToPOISeconds * 1000));
+
+        return new NavigationPOI(poi, label, dist, eta);
     }
 
 //    /** @return A string indicating the progress made. */
@@ -400,7 +478,11 @@ public class Navigator implements Persistable {
 
     /** In meters. */
     public int getTotalDistance() {
-        return SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[renderer.waypoints.size() - (CYCLIC_ROUTE ? 0 : 1)];
+        return getDistanceToWaypoint(renderer.waypoints.size() - (CYCLIC_ROUTE ? 0 : 1));
+    }
+
+    private int getDistanceToWaypoint(int idx) {
+        return SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[idx] - SegmentDistances.SEGMENT_CUMULATIVE_DISTANCES[startWaypoint];
     }
 
     /** In meters. */
@@ -424,16 +506,18 @@ public class Navigator implements Persistable {
         return totalTimeElapsed - (getStoppedTime() + 500) / 1000;
     }
 
-    public void setStartTime(Date startTime) {
+    /** Resets the navigation to start at the given waypoint at the given time. */
+    public void setStartTime(Date startTime, int waypointVisitedAtGivenTime) {
         startMs = startTime.getTime();
+        startWaypoint = waypointVisitedAtGivenTime;
     }
 
-    /** @return Estimated time of arrival (assuming a loop starting and ending at waypoint 0). */
+    /** @return Estimated time of arrival (to travel the total route distance). */
     public Date getETA() {
         return new Date(startMs + getTotalTime() * 1000 + getStoppedTime());
     }
 
-    /** In seconds, excluding stopped time. */
+    /** @return Estimated time to travel the total route distance. In seconds, excluding stopped time. */
     private int getTotalTime() {
         return (int)(getElapsedTime() / ((float) getDistanceTraveled() / getTotalDistance()) + 0.5);
     }
@@ -444,26 +528,45 @@ public class Navigator implements Persistable {
     }
 
     public String getNavigationStats() {
-        String stats = "ROUTE STATISTICS\n" +
+        StringBuilder stats = new StringBuilder();
+
+        stats.append("ROUTE STATISTICS\n" +
                 String.format("Dist traveled: %.1f km%n", getDistanceTraveled() * 0.001f) +
                 String.format("Avg speed: %.1f km/h%n", getAvgSpeed() * 3.6) +
                 String.format("Elapsed time: %s%n", Renderer.formatSeconds(getElapsedTime())) +
                 String.format("Stopped time: %s%n", Renderer.formatSeconds((getStoppedTime() + 500) / 1000)) +
                 String.format("Dist remaining: %.1f km%n", (getTotalDistance() - getDistanceTraveled()) * 0.001f) +
-                String.format("Top speed: %.1f km/h%n", getTopSpeed() * 3.6) +
-                "\n" +
-                "WAYPOINTS\n";
-
+                String.format("Top speed: %.1f km/h%n", getTopSpeed() * 3.6));
+    
+        // print stats about waypoints visited
+        stats.append("\nVISITED WAYPOINTS\n");
         for (int k = 1; k < waypointTimesIdx.size(); ++k) {
             int idx = waypointTimesIdx.get(k), prev = waypointTimesIdx.get(k-1);
             int diffMs = waypointTimesMs.get(k) - waypointTimesMs.get(k-1);
-            stats += String.format("%s  %d m  %s  %.1f km/h%n",
+            stats.append(String.format("%s  %d m  %s  %.1f km/h%n",
                     renderer.waypoints.get(idx).name,
                     SegmentDistances.SEGMENT_DISTANCES[prev][2],
                     Renderer.formatSeconds((diffMs + 500) / 1000),
-                    (float)SegmentDistances.SEGMENT_DISTANCES[prev][2] * 3600f / diffMs);
+                    (float)SegmentDistances.SEGMENT_DISTANCES[prev][2] * 3600f / diffMs));
         }
 
-        return stats;
+        // print stats about waypoints to come
+        stats.append("\nFUTURE WAYPOINTS\n");
+        for (int idx = getNextPOIIndex(), waypointIdx = nextWaypointIdx; idx <= renderer.pointsOfInterest.size(); ++idx) {
+            int routeIdx = idx == renderer.pointsOfInterest.size() ? Integer.MAX_VALUE : renderer.pointsOfInterest.get(idx).routeIndex;
+
+            for (; waypointIdx < renderer.waypoints.size() && renderer.waypoints.get(waypointIdx).routeIndex <= routeIdx; ++waypointIdx)
+                stats.append(getNavigationStatsPOIString(renderer.waypoints.get(waypointIdx)) + "\n");
+
+            if (idx < renderer.pointsOfInterest.size())
+                stats.append(getNavigationStatsPOIString(renderer.pointsOfInterest.get(idx)) + "\n");
+        }
+
+        return stats.toString();
+    }
+
+    private String getNavigationStatsPOIString(PointOfInterest poi) {
+        NavigationPOI npoi = getNavigationPOI(poi, "");
+        return String.format("%s  %d m  %s", poi.label, npoi.distance, Renderer.formatTime(npoi.eta));
     }
 }

@@ -30,6 +30,11 @@
         android:layout_marginBottom="16dp"
         android:fontFamily="sans-serif"
         android:hint="Start time"/>
+    <CheckBox
+        android:id="@+id/timeIsAtStartPoint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Time is at start point" />
     <ScrollView
         xmlns:android="http://schemas.android.com/apk/res/android"
         android:layout_width="fill_parent"

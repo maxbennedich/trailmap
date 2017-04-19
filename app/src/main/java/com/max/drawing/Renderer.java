@@ -861,17 +861,36 @@ public class Renderer extends View implements Persistable {
             print(canvas, stat3, (float)screenMidX + Paints.PAINT_SETTINGS.navigationDistOffsetFromCenter() - wid3, y, Paints.FONT_GPS_STATS, Paints.FONT_OUTLINE_GPS_STATS);
             print(canvas, stat4, (float)screenMidX + Paints.PAINT_SETTINGS.navigationDistOffsetFromCenter(), y, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
 
-            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, String.format("%.1f", navigator.getAvgSpeed() * 3.6), " km/h");
+            printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, String.format("%.2f", navigator.getAvgSpeed() * 3.6), " km/h");
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, formatSeconds(navigator.getElapsedTime()), " elapsed");
             printNavigationStats(canvas, 10, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", navigator.getDistanceTraveled() / 1000f), " km");
 
             if (Settings.NAVIGATION_MODE == Settings.NavigationMode.TO_FINISH) {
-                int x = getWidth() - Paints.PAINT_SETTINGS.navigationStatsOffsetFromRightEdge();
-                printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
-                printNavigationStatsPre(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
-                printNavigationStats(canvas, x, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
-            } else if (Settings.NAVIGATION_MODE == Settings.NavigationMode.POI_BY_POI) {
+                int xi = getWidth() - Paints.PAINT_SETTINGS.navigationStatsOffsetFromRightEdge();
+                printNavigationStatsPre(canvas, xi, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*2 - 12, "ETA ", formatTime(navigator.getETA()));
+                printNavigationStatsPre(canvas, xi, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*1 - 12, "left ", formatSeconds(navigator.getRemainingTime()));
+                printNavigationStats(canvas, xi, getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS*0 - 12, String.format("%.1f", (navigator.getTotalDistance() - navigator.getDistanceTraveled()) / 1000f), " km");
+            } else if (Settings.NAVIGATION_MODE == Settings.NavigationMode.POI_BY_POI_SORMLANDSLEDEN) {
+                int yi = getHeight() - Paints.FONT_SIZE_NAVIGATION_STATS * 7 - 12;
+                for (Navigator.NavigationPOI poi : navigator.getNextPOIsSormlandsleden()) {
+                    String etaStr = TIME_FORMAT_HH_MM.format(poi.eta);
+                    float xPos = getWidth() - 8 - Paints.FONT_NAVIGATION_STATS.measureText(etaStr);
+                    print(canvas, etaStr, xPos, yi, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
 
+                    String kmSubscript = " km ";
+                    xPos -= Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT.measureText(kmSubscript);
+                    print(canvas, kmSubscript, xPos, yi, Paints.FONT_NAVIGATION_SUBSCRIPT, Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT);
+
+                    String kmStr = formatDistanceKms(poi.distance);
+                    xPos -= Paints.FONT_NAVIGATION_STATS.measureText(kmStr);
+                    print(canvas, kmStr, xPos, yi, Paints.FONT_NAVIGATION_STATS, Paints.FONT_OUTLINE_NAVIGATION_STATS);
+
+                    String subscript = poi.label + " ";
+                    xPos -= Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT.measureText(subscript);
+                    print(canvas, subscript, xPos, yi, Paints.FONT_NAVIGATION_SUBSCRIPT, Paints.FONT_OUTLINE_NAVIGATION_SUBSCRIPT);
+
+                    yi += Paints.FONT_SIZE_NAVIGATION_STATS;
+                }
             } else {
                 throw new IllegalStateException("Unknown navigation mode: " + Settings.NAVIGATION_MODE);
             }
@@ -900,9 +919,12 @@ public class Renderer extends View implements Persistable {
         canvas.drawText(text, x, y, font);
     }
 
-    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm:ss");
+    private static final DateFormat TIME_FORMAT_HH_MM_SS = new SimpleDateFormat("HH:mm:ss");
+
+    private static final DateFormat TIME_FORMAT_HH_MM = new SimpleDateFormat("HH:mm");
+
     public static String formatTime(Date time) {
-        return TIME_FORMAT.format(time);
+        return TIME_FORMAT_HH_MM_SS.format(time);
     }
 
     public static String formatSeconds(int seconds) {
@@ -910,6 +932,10 @@ public class Renderer extends View implements Persistable {
         return hrs > 0 ?
                 String.format("%d:%02d:%02d", hrs, seconds / 60 - hrs*60, seconds % 60) :
                 String.format("%d:%02d", seconds / 60, seconds % 60);
+    }
+
+    public static String formatDistanceKms(int meters) {
+        return String.format(meters < 9950 ? "%.1f" : "%.0f", meters * 0.001);
     }
 
     private Rect srcRect = new Rect(1, 1, -1, -1); // left/top will always be 1 (for the 1px border), others filled in later

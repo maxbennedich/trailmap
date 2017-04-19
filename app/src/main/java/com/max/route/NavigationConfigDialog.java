@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.TextView;
 
@@ -23,7 +24,7 @@ public class NavigationConfigDialog extends DialogFragment {
 
     public interface NavigationConfigDialogListener {
         /** Arguments may be null if they should not be updated. */
-        public void updateNavigationConfig(Integer lastWaypointIdx, Date startTime);
+        public void updateNavigationConfig(Integer lastWaypointIdx, Date startTime, boolean timeIsAtStartPoint);
 
         public String getNavigationStats();
     }
@@ -59,7 +60,12 @@ public class NavigationConfigDialog extends DialogFragment {
                     public void onClick(DialogInterface di, int id) {
                         Integer lastWaypointIdx = parseIntOrNull(R.id.lastWaypointIdx);
                         Date startTime = parseDateOrNull(R.id.startTime);
-                        listener.updateNavigationConfig(lastWaypointIdx, startTime);
+                        boolean timeIsAtStartPoint = parseCheckbox(R.id.timeIsAtStartPoint);
+                        listener.updateNavigationConfig(lastWaypointIdx, startTime, timeIsAtStartPoint);
+                    }
+
+                    private boolean parseCheckbox(int id) {
+                        return ((CheckBox)getDialog().findViewById(id)).isChecked();
                     }
 
                     private Integer parseIntOrNull(int id) {

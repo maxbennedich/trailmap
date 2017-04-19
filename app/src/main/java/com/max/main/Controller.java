@@ -20,11 +20,9 @@ import com.max.route.PointOfInterest;
 import com.max.route.QuadNode;
 import com.max.route.QuadPointArray;
 
-import android.Manifest;
 import android.app.DialogFragment;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Point;
 import android.location.Location;
@@ -236,11 +234,11 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
     }
 
     @Override
-    public void updateNavigationConfig(Integer lastWaypointIdx, Date startTime) {
+    public void updateNavigationConfig(Integer lastWaypointIdx, Date startTime, boolean timeIsAtStartPoint) {
         if (lastWaypointIdx != null)
             renderer.navigator.setNextWaypoint(lastWaypointIdx + 1);
         if (startTime != null)
-            renderer.navigator.setStartTime(startTime);
+            renderer.navigator.setStartTime(startTime, timeIsAtStartPoint || lastWaypointIdx == null ? 0 : lastWaypointIdx);
     }
 
     @Override
@@ -327,12 +325,12 @@ public class Controller extends Activity implements NavigationConfigDialog.Navig
 
     private void loadPointsOfInterest() {
         loadTimer.reset();
-        renderer.waypoints = loadPointsOfInterest(Settings.WAYPOINTS_RESOURCE, Settings.WAYPOINTS_NUMBERED);
-        renderer.pointsOfInterest = loadPointsOfInterest(Settings.POINTS_OF_INTEREST_RESOURCE, false);
+        renderer.waypoints = loadAndSortPointsOfInterest(Settings.WAYPOINTS_RESOURCE, Settings.WAYPOINTS_NUMBERED);
+        renderer.pointsOfInterest = loadAndSortPointsOfInterest(Settings.POINTS_OF_INTEREST_RESOURCE, false);
         loadTimer.log("Loaded points of interest");
     }
 
-    private List<PointOfInterest> loadPointsOfInterest(int resourceId, boolean numbered) {
+    private List<PointOfInterest> loadAndSortPointsOfInterest(int resourceId, boolean numbered) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(getResources().openRawResource(resourceId)))) {
             int count = Integer.valueOf(reader.readLine());
             List<PointOfInterest> poi = new ArrayList<>(count);
