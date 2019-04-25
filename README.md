@@ -3,7 +3,9 @@
 Offline tile-based mapping and navigation for Android.
 
 <div align="middle">
-<a href="demo/play-navigation-demo.html"><img src="demo/navigation-demo.jpg" height="500"></a>
+<a href="https://maxbennedich.github.io/trailmap/demo/play-navigation-demo.html">
+<img src="demo/navigation-demo.jpg" height="500">
+</a>
 </div>
 <br/>
 
@@ -42,7 +44,9 @@ was to cover the distance in 4 days.
 <div align="middle">
 <img src="demo/norway-baltic-overview.png" height="320">
 &nbsp;
-<a href="demo/play-norway-baltic-route-finding.html"><img src="demo/norway-baltic-route-finding.jpg" height="320"></a>
+<a href="https://maxbennedich.github.io/trailmap/demo/play-norway-baltic-route-finding.html">
+<img src="demo/norway-baltic-route-finding.jpg" height="320">
+</a>
 </div>
 <br/>
 
