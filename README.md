@@ -88,16 +88,103 @@ and 42 minutes. The journey was featured in
 
 ### Biking Sörmlandsleden
 
-A final use case of the app was to bike the 627 km hiking trail Sörmlandsleden in Sweden.
-I used several sources of data to map the route as well as all public shelters (wooden huts)
-and water supplies near the route. Apart from showing directions, the most useful aspect
-of the app was that it displayed the remaining time to the
-next shelter and water supply (based on how fast I'd biked on previous segments) which made it
-easy to plan resources and where to spend the next night.
+A final use case of the app was to bike the main route of the hiking trail Sörmlandsleden in Sweden,
+which consists of 62 sections totaling 627 km.
 
 <div align="middle">
-<img src="demo/sormlandsleden-overview.jpg" width="61.8%">
-&nbsp;
-<img src="demo/sormlandsleden-screenshot.png" width="30%">
+<img src="demo/sormlandsleden-official-map.jpg" width="70%">
 </div>
 <br/>
+
+I put quite a bit of work into creating a digital version of the route. Part of it was
+available from OpenStreetMap (OSM), but many sections were still missing (at least at the time this
+project took place). The accuracy of the OSM data also varies, and some sections are
+incorrect since the hiking trail is frequently re-routed. Instead I used the high quality data
+from Lantmäteriet (Swedish mapping authority), which has a layer consisting of all hiking trails
+in Sweden. Unfortunately, this data is not very structured. It consists of thousands of tiny
+individual pieces of trail, in seemingly random order, and with no information on whether
+a piece is part of Sörmlandsleden or any of the other dozens of trails around Stockholm.
+An example is shown below, the raw data on the left (where each yellow square represents the start
+or end of a piece of trail), and the actual stretch of the hiking trail on the right.
+
+<div align="middle">
+<img src="demo/hiking-trails-all.jpg" width="50%">
+&nbsp;
+<img src="demo/hiking-trails-sormlandsleden.jpg" width="41%">
+</div>
+<br/>
+
+To extract the hiking trail, I wrote a script that gathered information about the start and
+end coordinates of all its 62 sections from the hiking trail's website, mapped that to the
+raw geodata to find matching section endpoints, then looked for matching pieces of trail to
+fill in the entire, sorted, route. The result is illustrated below, with each yellow square
+representing the start/end of a section.
+
+<div align="middle">
+<img src="demo/sormlandsleden-overview.jpg" width="75%">
+</div>
+<br/>
+
+Other data sources were used to add the location of all public shelters (wooden huts)
+and water supplies near the route, and finally everything was loaded into the trail map app.
+Below are examples of what the app looks like during use.
+
+<div align="middle">
+<img src="demo/sormlandsleden-screenshot1.png" width="30%">
+&nbsp;
+<img src="demo/sormlandsleden-screenshot2.png" width="30%">
+</div>
+<br/>
+
+Apart from showing directions, the most useful aspect of the app was that it displayed
+the distance and estimated time to the next shelter and water supply (based on how fast I'd biked
+on previous sections) which made it easier to plan resources and where to spend the next night.
+
+During this project, I also experimented with predicting the pace for a section, based
+on altitude data and trail surface (e.g. paved / dirt / trail). Some sections of the trail
+are rugged and stick to the forest, while others are flatter and consist of dirt
+or even paved roads, allowing much higher speed on a bike.
+
+To predict the pace for a section, I wrote a program that analyzes how technically challenging
+a section is. First, data from Lantmäteriet and Trafikverket (Swedish Transport Administration)
+was combined to determine the surface type along the section, grouped by trail, dirt road, or asphalt.
+A relative speed was defined (based on empirical testing), where dirt road was defined as 2.4x
+faster than trail, and asphalt road 3x faster than trail. Next, altitude data from Lantmäteriet was
+used to more accurately estimate the speed. This was done using a formula based on
+[Tobler's hiking function](https://en.wikipedia.org/wiki/Tobler%27s_hiking_function), adapted slightly
+for biking instead of hiking. This formula basically states that hiking speed slows down at inclines and
+steep declines. Combining this formula with the trail surface type, the speed can be estimated at every
+single meter along the way, and consequently the average pace can be estimated for the entire section.
+
+Lantmäteriet has very high precision in their altitude data, with a grid resolution of 2 meters
+(i.e. one measurement every other meter, in a grid), measured by laser scanning from airplanes
+flown at low altitude and at the optimal time of year. In tests I've done, this altitude data is much more reliable
+than using GPS (at least a cell phone GPS). Other publically available altitude data is typically
+measured from space, and has much lower resolution and accuracy.
+[SRTM](https://en.wikipedia.org/wiki/Shuttle_Radar_Topography_Mission) and
+[ASTER](https://en.wikipedia.org/wiki/Advanced_Spaceborne_Thermal_Emission_and_Reflection_Radiometer#ASTER_Global_Digital_Elevation_Model)
+have a resolution of 30 - 90 meters, and Google Maps Elevation API only offers 150 - 600 meter
+resolution in the Stockholm region. With such a low resolution, the data becomes very
+unreliable for the type of pace analysis described above. Below is an example of what the altitude
+profile looks like for section 39 of Sörmlandsleden, using Lantmäteriet's data, Google Maps Elevation API,
+and data from OpenStreetMaps.
+
+<div align="middle">
+<img src="demo/elevation-profile-lantmateriet.png" width="50%">
+</div>
+<br/>
+<div align="middle">
+<img src="demo/elevation-profile-google.png" width="50%">
+</div>
+<br/>
+<div align="middle">
+<img src="demo/elevation-profile-openstreetmap.png" width="50%">
+</div>
+<br/>
+
+Of course, it's more complicated than this in reality. Rocks, roots, and other obstacles
+can make a trail a lot more difficult than another, even though they have the same profile.
+But this method worked well as a rough estimate. The
+same method can be used for hiking and running by adjusting the relative speeds (hiking is
+not 3x faster on asphalt than on trail). With more recorded data available, it'd be interesting
+to apply regression analysis or machine learning to improve this method.
