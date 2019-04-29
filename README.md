@@ -47,6 +47,8 @@ was to cover the distance in 4 days.
 <a href="https://maxbennedich.github.io/trailmap/demo/play-norway-baltic-route-finding.html">
 <img src="demo/norway-baltic-route-finding.jpg" height="320">
 </a>
+<br/>
+<sub><i>Map data left: Google</i></sub>
 </div>
 <br/>
 
@@ -111,6 +113,8 @@ or end of a piece of trail), and the actual stretch of the hiking trail on the r
 <img src="demo/hiking-trails-all.jpg" width="50%">
 &nbsp;
 <img src="demo/hiking-trails-sormlandsleden.jpg" width="41%">
+<br/>
+<sub><i>Map data: Google</i></sub>
 </div>
 <br/>
 
@@ -122,6 +126,8 @@ representing the start/end of a section.
 
 <div align="middle">
 <img src="demo/sormlandsleden-overview.jpg" width="75%">
+<br/>
+<sub><i>Map data: Google</i></sub>
 </div>
 <br/>
 
